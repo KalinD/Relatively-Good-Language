@@ -1,6 +1,4 @@
-module MyParser
-    ( parseMyLang
-    ) where
+module MyParser (parseMyLang) where
 
 import Text.Parsec
 import Text.Parsec.String (Parser)
@@ -30,3 +28,17 @@ parseNumUntilEnd = parse (num <* eof) ""
 
 parseMyLang s = left show $ parseNumUntilEnd s
 
+languageDef =
+  emptyDef {
+    Token.reservedOpNames = ["(" ,")", "+", "*", "=", "==", "<", ">", "<=", ">="],
+    Token.reservedNames = ["whatIf", "butWhatIf", "pleaseDoWhile",
+        "allAtOnce", "hangingByAThread", "shared", "int", "bool", "aFewOf", "true", "false"]
+  }
+
+lexer = Token.makeTokenParser languageDef
+
+identifier = Token.identifier lexer
+integer    = Token.integer lexer
+parens     = Token.parens lexer
+symbol     = Token.symbol lexer
+reserved   = Token.reserved lexer
