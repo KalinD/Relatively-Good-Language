@@ -1,0 +1,15 @@
+123213
+int n = 4;
+int i = 0;
+int fst = 0;
+int snd = 1;
+
+pleaseDoWhile(i < n) {
+	int temp = snd;
+	snd = fst + snd;
+	fst = temp;
+
+	i = i + 1;
+}
+
+print(snd)
