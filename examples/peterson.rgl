@@ -1,0 +1,30 @@
+shared aFewOf[bool] flag = [false, false]
+shared int turn = 0
+
+allAtOnce
+{
+  hangingByAThread {
+    flag[0] = true
+    turn = 1
+    pleaseDoWhile(flag[1] == true && turn == 1)
+    {
+      %busy wait%
+    }
+    %critical section%
+    %...%
+    %end of critical section%
+    flag[0] = false
+  }
+  hangingByAThread {
+    flag[1] = true
+    turn = 0
+    pleaseDoWhile(flag[0] == true && turn == 0)
+    {
+      %busy wait%
+    }
+    %critical section%
+    %...%
+    %end of critical section%
+    flag[1] = false
+  }
+}

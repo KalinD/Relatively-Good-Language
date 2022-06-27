@@ -1,0 +1,38 @@
+int moneyAcc1 = 10
+int moneyAcc2 = 0
+int moneyAcc3 = 15
+int moneyAcc4 = 1
+
+allAtOnce
+{
+    hangingByAThread {
+        doNotTouchThis(1) % wait
+        moneyAcc1 = moneyAcc1 - 3
+        moneyAcc2 = moneyAcc2 + 3
+        nowYouCanTouchThis(1) % notify
+    }
+    hangingByAThread {
+        doNotTouchThis(1) % wait
+        moneyAcc1 = moneyAcc1 - 3
+        moneyAcc2 = moneyAcc2 + 3
+        nowYouCanTouchThis(1)  % notify
+    }
+    hangingByAThread {   
+        doNotTouchThis(1)
+        moneyAcc1 = moneyAcc1 - 3
+        moneyAcc2 = moneyAcc2 + 3
+        nowYouCanTouchThis(1)
+    }
+    hangingByAThread {
+        doNotTouchThis(2) % wait
+        moneyAcc3 = moneyAcc1 - 5
+        moneyAcc4 = moneyAcc2 + 5
+        nowYouCanTouchThis(2)
+    }
+    hangingByAThread {
+        doNotTouchThis(2)
+        moneyAcc3 = moneyAcc1 - 5
+        moneyAcc4 = moneyAcc2 + 5
+        nowYouCanTouchThis(2)
+    }
+}
