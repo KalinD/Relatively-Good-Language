@@ -1,5 +1,4 @@
-module MyCodeGen
-    ( codeGen ) where
+module MyCodeGen (codeGen) where
 
 import Sprockell
 
