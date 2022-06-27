@@ -8,8 +8,6 @@ pleaseDoWhile(i < n) {
 	snd = fst + snd
 	fst = temp
 
-	bool a = i < 3
-
 	i = i + 1
 }
 
