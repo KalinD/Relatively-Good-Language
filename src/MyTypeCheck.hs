@@ -1,8 +1,11 @@
-module MyTypeCheck (typeCheck) where
+module MyTypeCheck where -- (typeCheck) where
 
 import MyParser as Parser
 
-data Program = Program [Statement]
+-- Additional libraries
+import Data.Typeable (typeOf, TypeRep)
+
+data Program = Program [Statement] deriving Show
 
 data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statement]
                | While Comparison [Statement]
@@ -12,7 +15,7 @@ data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statemen
                | SequentialThread [Statement]
                | Assign String Expression
                | AssignArr String Expression Expression
-               | CreateVariable Type String Expression
+               | CreateVariable String String Expression
                | Print Expression
                | Shared Statement
     deriving Show
@@ -20,68 +23,161 @@ data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statemen
 data Expression = Addition       Expression Expression  -- TODO: Optional to +, -, * of booleans
                 | Subtraction    Expression Expression
                 | Multiplication Expression Expression
-                | Shared Expression
                 | I  String Integer    -- Integer
                 | B  String Bool       -- Boolean
                 | LI String [Integer]  -- List of Integers
                 | LB String [Bool]     -- List of Booleans
-                | LL String [Vars]     -- List of Lists
-            deriving Show
+                | LL String [Expression]     -- List of Lists
+                | Identifier String
     deriving Show
 
--- scope = [] :: [(Int, Expression)]
-getName (_, (I name _)) = name
-getName (_, (B name _)) = name
-getLevel = fst
-getName (_, (I _ val)) = val
-getName (_, (B _ val)) = val
+data Comparison = Smaller      Expression Expression
+                | Bigger       Expression Expression
+                | Equal        Expression Expression
+                | SmallerEqual Expression Expression
+                | BiggerEqual  Expression Expression
+                | And          Comparison Comparison
+                | Or          Comparison Comparison
+                | Boolean Bool
+    deriving Show
 
-reduceProg :: Prog -> Program
-reduceProg (Prog []) = (Prog [])
-reduceProg (Prog (x:xs)) = (Program (parseStatement 0 [] x):(reduceProg (Prog xs)))
+-- level, type, name
+-- scope = [] :: [(Int, String)]
+getLevel (level, _, _) = level
+getType  (_, t, _)     = t
+getName  (_, _, name)  = name
+
+typeCheckProg :: Prog -> Program
+typeCheckProg (Prog []) = (Program [])
+typeCheckProg (Prog stms) = (Program (fmap (\x -> typeCheckStatement x 0 []) stms))
+
+typeCheckStatement :: Stm -> Int -> [(Int, String, String)] -> Statement
+typeCheckStatement (IfStm cmp stms1 elseIfs stms2) level vars =
+        (If (typeCheckCompare cmp level vars) -- If comparison
+            (fmap (\x -> typeCheckStatement x newLevel vars) stms1)  -- If statements
+            (fmap (\x -> typeCheckElseIf x newLevel vars) elseIfs)   -- elseIfs
+            (fmap (\x -> typeCheckStatement x newLevel vars) stms2)) -- else statements
+    where newLevel = level + 1
+typeCheckStatement (WhileLP cmp smts) level vars =
+        (While (typeCheckCompare cmp level vars) (fmap (\x -> typeCheckStatement x newLevel vars) smts))
+    where newLevel = level + 1
+typeCheckStatement (ParallelT stms) level vars =
+        (Parallel (fmap (\x -> typeCheckStatement x newLevel vars) stms))
+    where newLevel = level + 1 
+typeCheckStatement (LckStart n) _ _ = (LockStart n)
+typeCheckStatement (LckEnd n) _ _ = (LockEnd n)
+typeCheckStatement (SeqThread stms) level vars =
+        (SequentialThread (fmap (\x -> typeCheckStatement x level vars) stms))
+    where newLevel = level + 1
+typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect     = (Assign name (typeCheckExpr expr level vars))
+                                                    | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
+                                                    | otherwise                    = error "Variable doesn't exists"
+    where 
+        var = filter (\x -> getName x == name) vars
+        varExists = length var > 0
+        typeCorrect = (getTypeOfExpr expr vars) == typeOf (stringToType (getType (head var)))
+typeCheckStatement (CreateVar (Name t) name expr) level vars = (CreateVariable t name (typeCheckExpr expr level newVars))
     where
-        newScope = getVars x
+        newVars = vars ++ [(level, t, name)]
+typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level vars))
+typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
 
-reduceStatement :: Statement -> Int ->  [(String, Int, T)] -> Statement
-reduceStatement (IfStm cmp stms1 elseIfs stms2) = (If (reduceCompare cmp) (reduceStatement stms1) (fmap reduceElseIf elseIfs) (reduceStatement stms2)) 
-reduceStatement (WhileLP cmp smts) = (While (reduceCompare cmp) (fmap reduceStatement stms))
-reduceStatement (ParallelT stms) = (Parallel (fmap reduceStatement stms)) 
-reduceStatement (LckStart n) = (LockStart n)
-reduceStatement (LckEnd n) = (LockEnd n)
-reduceStatement (SeqThread stms) = (SequentialThread (fmap reduceStatement stms))
-reduceStatement (AssignVal name expr) = (Assign name (reduceExpr expr))
-reduceStatement (AssignArrVal name expr1 expr2) = (Assign name (reduceExpr expr1) (reduceExpr expr2))
+typeCheckElseIf :: (Cmp, [Stm]) -> Int -> [(Int, String, String)] -> (Comparison, [Statement])
+typeCheckElseIf (cmp, stms) level vars = ((typeCheckCompare cmp level vars), (fmap (\x -> typeCheckStatement x newLevel vars) stms))
+    where newLevel = level + 1
 
-reduceStatement (CreateVar t name expr) = (CreateVariable t name (reduceExpr expr))
+ 
+typeCheckExpr :: Expr -> Int -> [(Int, String, String)] -> Expression
+typeCheckExpr (Add expr1 expr2) level vars = (Addition (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
+typeCheckExpr (Mult expr1 expr2) level vars = (Multiplication (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
+typeCheckExpr (Sub expr1 expr2) level vars = (Subtraction (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
+typeCheckExpr (IVal val) level vars = (I "" val) 
+typeCheckExpr (BVal (BoolVal val)) level vars = (B "" val) 
+typeCheckExpr (Id name) level vars = (Identifier name)
 
-reduceStatement (Prnt expr) = (Print (reduceExpr expr))
-reduceStatement (Shrd stm) = (Shared (reduceStatement stm))
+typeCheckCompare :: Cmp -> Int -> [(Int, String, String)] -> Comparison
+typeCheckCompare (Sm expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (Smaller (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise                              = error "Type error in '<'"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (SE expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (SmallerEqual (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise                              = error "Type error in '<='"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (Bi expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (Bigger (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise                              = error "Type error in '>'"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (BE expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (BiggerEqual (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise                              = error "Type error in '>='"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (Eq expr1 expr2) level vars | type1 == type2 = (Equal (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise      = error "Type error in '=='"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (A cmp1 cmp2) level vars = (And (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
+typeCheckCompare (O cmp1 cmp2) level vars = (Or (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
+typeCheckCompare (BoolVal b) _ _ = Boolean b
 
-reduceExpr :: Expr -> Expression
-reduceExpr (Add expr1 expr2) = (Addition (reduceExpr expr1) (reduceExpr expr2)) 
-    --       | Sub  Expr Expr
-    --       | Mult Expr Expr
-    --       | ListVals [Expr]
-    --       | IVal Integer
-    --       | BVal Comparison
-    --       | ArrVal String Expr
-    --       | Id String
-    -- deriving Show
+getTypeOfExpr :: Expr -> [(Int, String, String)] -> TypeRep
+getTypeOfExpr (IVal val) _ = typeOf val
+getTypeOfExpr (BVal val) _ = typeOf val
+getTypeOfExpr (Id name) vars | length var > 0 = t
+                             | otherwise      = error ("Variable '" ++ name ++ "' not found!")
+    where
+        var = filter (\x -> getName x == name) vars
+        t = typeOf (stringToType (getType (head var)))
+getTypeOfExpr (ListVals exprs) vars | allSameType = typeFirst
+                                    | otherwise   =  error "Array doesn't have same type"
+    where
+        typeFirst = getTypeOfExpr (head exprs) vars
+        types = fmap (\x -> getTypeOfExpr x vars) exprs
+        allSameType = all (\x -> typeOf x == typeFirst) types
+getTypeOfExpr (Add expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
+                                     | type1 == type2 && type1 == typeInteger = typeInteger
+                                     | otherwise                              = error "Type missmatch in addition!"
+    where
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+        typeInteger = typeOf (0 :: Integer)
+        typeBool = typeOf True
+getTypeOfExpr (Mult expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
+                                      | type1 == type2 && type1 == typeInteger = typeInteger
+                                      | otherwise                              = error "Type missmatch in multiplication!"
+    where
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+        typeInteger = typeOf (0 :: Integer)
+        typeBool = typeOf True
+getTypeOfExpr (Sub expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
+                                     | type1 == type2 && type1 == typeInteger = typeInteger
+                                     | otherwise                              = error "Type missmatch in subtraction!"
+    where
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+        typeInteger = typeOf (0 :: Integer)
+        typeBool = typeOf True
 
-reduceList :: Expr -> String -> Vars
-reduceList (ListVals []) name = (LL name []) 
-reduceList (ListVals ((IVal x):[])) name = (LI name [x]) 
-reduceList (ListVals ((BVal (BoolVal x)):[])) name = (LB name [x]) 
-reduceList (ListVals ((IVal x):(BVal xs):xss)) _  = error "List not of the same type"
-reduceList (ListVals ((BVal x):(IVal xs):xss)) _  = error "List not of the same type"
-reduceList (ListVals ((BVal (BoolVal x)):xs:xss)) name = (LB name x) ++ (reduceExpr (ListVals [xs:xss]) name)
-reduceList (ListVals ((IVal x):xs:xss)) name = (LI name x) ++ (reduceExpr (ListVals [xs:xss]) name)
+stringToType :: String -> TypeRep
+stringToType "int"  = typeOf (0 :: Integer)
+stringToType "bool" = typeOf True
 
--- reduceCompare (S expr1 expr2) =
--- reduceCompare (SE expr1 expr2) =
--- reduceCompare (B expr1 expr2) =
--- reduceCompare (BE expr1 expr2) =
--- reduceCompare (Eq expr1 expr2) =
--- reduceCompare (BoolVal b) =
--- reduceCompare (And comp1 comp2) = 
--- reduceCompare (Or comp1 copm2) = 
+typeCheckList :: Expr -> String -> Expression
+typeCheckList (ListVals []) name = (LL name []) 
+typeCheckList (ListVals ((IVal x):[])) name = (LI name [x]) 
+typeCheckList (ListVals ((BVal (BoolVal x)):[])) name = (LB name [x]) 
+typeCheckList (ListVals ((IVal x):(BVal xs):xss)) _  = error "List not of the same type"
+typeCheckList (ListVals ((BVal x):(IVal xs):xss)) _  = error "List not of the same type"
+-- typeCheckList (ListVals ((BVal (BoolVal x)):xs:xss)) name = (LB name x) ++ (typeCheckExpr (ListVals [xs:xss]) name)
+-- typeCheckList (ListVals ((IVal x):xs:xss)) name = (LI name x) ++ (typeCheckExpr (ListVals (xs:xss)) name)
