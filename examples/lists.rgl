@@ -1,0 +1,5 @@
+pleaseDoWhile(true && 1 < 2){}
+aFewOf[int] arrI = [1, 2, 3]
+aFewOf[bool] arrB = [true, false, true]
+
+arrI = [4, 5, 6]
