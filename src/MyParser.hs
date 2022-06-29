@@ -40,8 +40,8 @@ languageDef =
     Token.reservedNames = ["whatIf", "butWhatIf", "else", "pleaseDoWhile",
         "allAtOnce", "hangingByAThread", "shared", "int", "bool", "aFewOf", "true", "false", "print", "doNotTouchThis", "nowYouCanTouchThis"], -- true and false might be redundant in here
     Token.caseSensitive = True,
-    Token.commentStart = "%-",
-    Token.commentEnd = "-%",
+    -- Token.commentStart = "%-",
+    -- Token.commentEnd = "-%",
     Token.commentLine = "%"
   }
 
@@ -93,13 +93,13 @@ data Expr = Add  Expr Expr  -- TODO: Optional to +, -, * of booleans
  - The constructors are in the same order as above.
  -}
 data Cmp = S  Expr Expr
-             | SE Expr Expr  -- Extra
-             | B  Expr Expr
-             | BE Expr Expr  -- Extra
-             | Eq Expr Expr
-             | BoolVal Bool
-             | And Cmp Cmp
-             | Or Cmp Cmp
+        | SE Expr Expr  -- Extra
+        | B  Expr Expr
+        | BE Expr Expr  -- Extra
+        | Eq Expr Expr
+        | BoolVal Bool
+        | And Cmp Cmp
+        | Or Cmp Cmp
     deriving Show
 
 
@@ -114,8 +114,9 @@ parseStm =  try (AssignVal <$> identifier <*> (symbol "=" *> parseExpr))
               <|> WhileLP <$> (reserved "pleaseDoWhile" *> (parens parseCmp)) <*> braces (many parseStm)
               <|> ParallelT <$> (reserved "allAtOnce" *> braces (many parseStm))
               <|> SeqThread <$> (reserved "hangingByAThread" *> braces (many parseStm))
-              <|> IfStm <$> (reserved "whatIf" *> (parens parseCmp)) <*> (braces (many parseStm)) <*> (many ((,) <$> (reserved "butWhatIf" *> (parens parseCmp)) <*> (brackets (many parseStm)))) <*> ((reserved "else" *> brackets (many parseStm)))
-              <|> IfStm <$> (reserved "whatIf" *> (parens parseCmp)) <*> (braces (many parseStm)) <*> (many ((,) <$> (reserved "butWhatIf" *> (parens parseCmp)) <*> (brackets (many parseStm)))) <*> pure []
+              <|> try (IfStm <$> (reserved "whatIf" *> (parens parseCmp)) <*> (braces (many parseStm)) <*> (many ((,) <$> (reserved "butWhatIf" *> (parens parseCmp)) <*> (braces (many parseStm)))) <*> ((reserved "else" *> braces (many parseStm))))
+              <|> try (IfStm <$> (reserved "whatIf" *> (parens parseCmp)) <*> (braces (many parseStm)) <*> (many ((,) <$> (reserved "butWhatIf" *> (parens parseCmp)) <*> (braces (many parseStm)))) <*> pure [])
+              <|> IfStm <$> (reserved "whatIf" *> (parens parseCmp)) <*> (braces (many parseStm)) <*> pure [] <*> pure []
               <|> Prnt <$> (reserved "print" *> parens (parseExpr))
               <|> LckStart <$> (reserved "doNotTouchThis" *> (parens integer))
               <|> LckEnd <$> (reserved "nowYouCanTouchThis" *> (parens integer))
