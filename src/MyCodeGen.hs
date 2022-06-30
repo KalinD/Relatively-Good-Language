@@ -1,6 +1,8 @@
 module MyCodeGen (codeGen) where
 
 import Sprockell
+import MyTypeCheck
+import MyParser
 
 codeGen :: Integer -> [Instruction]
 codeGen n = [ 
@@ -29,15 +31,14 @@ fibGen n = [
           Load (ImmValue 0) regB,                   -- i = 0
           Load (ImmValue 0) regC,                   -- fst = 0
           Load (ImmValue 1) regD,                   -- snd = 1
-          Compute Gt regA regB regE,                -- n > i
-          Branch regC (Rel (2)),                    -- go into the while loop  
-          Jump (Abs 12),                            -- skip the while loop
+          Compute LtE regB regA regE,               -- i <= n 
+          Branch regE (Abs 11),                     -- go to the end
           Load (IndAddr regD) regF,                 -- temp = snd
           Compute Add regC regD regD,               -- snd = fst + snd
-          Load (IndAddr regF) regC,                 -- fst = temp
+          Compute Add regF reg0 regC,               -- fst = temp
           Compute Incr regB regB regB,              -- i = i + 1
-          Jump (Rel (-7)),                          -- back to the start of the while loop
-          WriteInstr regD numberIO,                 -- ouput snd
+          Jump (Rel (-6)),                          -- back to the start of the while loop
+          WriteInstr regE numberIO,                 -- ouput snd
 
           -- end
           EndProg
@@ -66,3 +67,41 @@ fprog = [ ReadInstr numberIO            -- ask the user for a number
        ]
 
 go = run [fprog, fprog, fprog]
+
+test :: [Instruction]
+test = [
+      Load (ImmValue 5) (0),
+      Load (ImmValue 5) (9),
+      WriteInstr (0) numberIO,
+      WriteInstr (9) numberIO,
+      EndProg
+  ]
+
+scopeTable = typeCheckProg <$> (parser parseProg <$> (readFile "../examples/genTest.rgl"))
+
+-- Table: [(name, scope, regAddr, memAddr)]
+-- if regAddr or memAddr = -1 its not stored in the memory
+data VarTable = VarTable [(String, Int, Int, Int)]
+              deriving Show
+
+get3rd :: (a,b,c) -> c
+get3rd (_,_,x) = x
+
+-- program to generate -> addr counter -> (instructions to perform, addr counter, variable table)
+progGen :: Program -> Int -> VarTable -> ([Instruction], Int, VarTable)
+progGen (Program [stm]) addr vt = instrs
+                                   where
+                                          genrstm = (stmGen stm addr vt)
+                                          instrs = fst genrstm
+                                          naddr = snd genrstm 
+                                          nvt = get3rd genrstm
+progGen (Program (stm:stms)) addr vt = instrs ++ (progGen (Program stms) naddr nvt)
+                                   where
+                                          genrstm = (stmGen stm addr vt)
+                                          instrs = fst genrstm
+                                          naddr = snd genrstm 
+                                          nvt = get3rd genrstm
+
+-- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
+stmGen :: Statement -> Int -> VarTable -> ([Instruction], Int, VarTable)
+stmGen (CreateVariable dtype name (I n)) addr vt = ([Load (ImmValue (fromIntegral n)) addr], addr+1, (vt++[(name, 0, -1, addr)]))

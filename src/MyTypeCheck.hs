@@ -24,11 +24,12 @@ data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statemen
 data Expression = Addition       Expression Expression  -- TODO: Optional to +, -, * of booleans
                 | Subtraction    Expression Expression
                 | Multiplication Expression Expression
-                | I  String Integer    -- Integer
-                | B  String Bool       -- Boolean
-                | LI String [Integer]  -- List of Integers
-                | LB String [Bool]     -- List of Booleans
-                | LL String [Expression]     -- List of Lists
+                | I  Integer    -- Integer
+                | B  Bool       -- Boolean
+                | BComp Comparison
+                -- | LI [Integer]  -- List of Integers
+                -- | LB [Bool]     -- List of Booleans
+                -- | LL [Expression]     -- List of Lists
                 | Identifier String
     deriving Show
 
@@ -71,29 +72,39 @@ getVar :: Stm -> Int -> VarsMap
 getVar (CreateVar (Name t) name _) level = newVars
     where
         newVars = [(level, t, name)]
+getVar (Shrd (CreateVar (Name t) name _)) level = newVars
+    where
+        newVars = [(level, t, name)]
 getVar _ _ = []
 
 typeCheckStatement :: Stm -> Int -> VarsMap -> Statement
 typeCheckStatement (IfStm cmp stms1 elseIfs stms2) level vars =
         (If (typeCheckCompare cmp level vars) -- If comparison
-            (fmap (\x -> typeCheckStatement x newLevel vars) stms1)  -- If statements
+            (fmap (\x -> typeCheckStatement x newLevel ifVars) stms1)  -- If statements
             (fmap (\x -> typeCheckElseIf x newLevel vars) elseIfs)   -- elseIfs
-            (fmap (\x -> typeCheckStatement x newLevel vars) stms2)) -- else statements
-    where newLevel = level + 1
-typeCheckStatement (WhileLP cmp smts) level vars =
-        (While (typeCheckCompare cmp level vars) (fmap (\x -> typeCheckStatement x newLevel vars) smts))
-    where newLevel = level + 1
-typeCheckStatement (ParallelT stms) level vars =
-        (Parallel (fmap (\x -> typeCheckStatement x newLevel vars) stms))
-    where newLevel = level + 1 
+            (fmap (\x -> typeCheckStatement x newLevel elseVars) stms2)) -- else statements
+    where 
+        newLevel = level + 1
+        ifVars = vars ++ getVars stms1 newLevel
+        elseVars = vars ++ getVars stms2 newLevel
+typeCheckStatement (WhileLP cmp stms) level vars =
+        (While (typeCheckCompare cmp level vars) (fmap (\x -> typeCheckStatement x newLevel newVars) stms))
+    where 
+        newLevel = level + 1
+        newVars = vars ++ getVars stms newLevel
+typeCheckStatement (ParallelT stms) level vars = (Parallel (fmap (\x -> typeCheckStatement x newLevel newVars) stms))
+    where
+        newLevel = level + 1
+        newVars = vars ++ getVars stms newLevel 
 typeCheckStatement (LckStart n) _ _ = (LockStart n)
 typeCheckStatement (LckEnd n) _ _ = (LockEnd n)
-typeCheckStatement (SeqThread stms) level vars =
-        (SequentialThread (fmap (\x -> typeCheckStatement x level vars) stms))
-    where newLevel = level + 1
+typeCheckStatement (SeqThread stms) level vars = (SequentialThread (fmap (\x -> typeCheckStatement x newLevel newVars) stms))
+    where 
+        newLevel = level + 1
+        newVars = vars ++ getVars stms newLevel
 typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect     = (Assign name (typeCheckExpr expr level vars))
                                                     | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
-                                                    | otherwise                    = error "Variable doesn't exists"
+                                                    | otherwise                    = error ("Variable '" ++ name ++ "' doesn't exists")
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
@@ -105,17 +116,20 @@ typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level var
 typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
 
 typeCheckElseIf :: (Cmp, [Stm]) -> Int -> [(Int, String, String)] -> (Comparison, [Statement])
-typeCheckElseIf (cmp, stms) level vars = ((typeCheckCompare cmp level vars), (fmap (\x -> typeCheckStatement x newLevel vars) stms))
-    where newLevel = level + 1
+typeCheckElseIf (cmp, stms) level vars = ((typeCheckCompare cmp level vars), (fmap (\x -> typeCheckStatement x newLevel newVars) stms))
+    where 
+        newLevel = level + 1
+        newVars = vars ++ getVars stms newLevel
 
  
 typeCheckExpr :: Expr -> Int -> [(Int, String, String)] -> Expression
-typeCheckExpr (Add expr1 expr2) level vars = (Addition (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
+typeCheckExpr (MyAdd expr1 expr2) level vars = (Addition (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
 typeCheckExpr (Mult expr1 expr2) level vars = (Multiplication (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
 typeCheckExpr (Sub expr1 expr2) level vars = (Subtraction (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
-typeCheckExpr (IVal val) level vars = (I "" val) 
-typeCheckExpr (BVal (BoolVal val)) level vars = (B "" val) 
-typeCheckExpr (Id name) level vars = (Identifier name)
+typeCheckExpr (IVal val) _ _ = (I val) 
+typeCheckExpr (BVal (BoolVal val)) _ _ = (B val) 
+typeCheckExpr (BVal cmp) level vars = (BComp (typeCheckCompare cmp level vars))
+typeCheckExpr (Id name) _ _ = (Identifier name)
 
 typeCheckCompare :: Cmp -> Int -> [(Int, String, String)] -> Comparison
 typeCheckCompare (Sm expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (Smaller (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
@@ -154,7 +168,7 @@ typeCheckCompare (BoolVal b) _ _ = Boolean b
 
 getTypeOfExpr :: Expr -> VarsMap -> TypeRep
 getTypeOfExpr (IVal val) _ = typeOf val
-getTypeOfExpr (BVal val) _ = typeOf val
+getTypeOfExpr (BVal _) _ = typeOf True
 getTypeOfExpr (Id name) vars | length var > 0 = t
                              | otherwise      = error ("Variable '" ++ name ++ "' not found!")
     where
@@ -166,7 +180,7 @@ getTypeOfExpr (ListVals exprs) vars | allSameType = typeFirst
         typeFirst = getTypeOfExpr (head exprs) vars
         types = fmap (\x -> getTypeOfExpr x vars) exprs
         allSameType = all (\x -> typeOf x == typeFirst) types
-getTypeOfExpr (Add expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
+getTypeOfExpr (MyAdd expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
                                      | type1 == type2 && type1 == typeInteger = typeInteger
                                      | otherwise                              = error "Type missmatch in addition!"
     where
@@ -195,11 +209,11 @@ stringToType :: String -> TypeRep
 stringToType "int"  = typeOf (0 :: Integer)
 stringToType "bool" = typeOf True
 
-typeCheckList :: Expr -> String -> Expression
-typeCheckList (ListVals []) name = (LL name []) 
-typeCheckList (ListVals ((IVal x):[])) name = (LI name [x]) 
-typeCheckList (ListVals ((BVal (BoolVal x)):[])) name = (LB name [x]) 
-typeCheckList (ListVals ((IVal x):(BVal xs):xss)) _  = error "List not of the same type"
-typeCheckList (ListVals ((BVal x):(IVal xs):xss)) _  = error "List not of the same type"
+-- typeCheckList :: Expr -> String -> Expression
+-- typeCheckList (ListVals []) name = (LL name []) 
+-- typeCheckList (ListVals ((IVal x):[])) name = (LI name [x]) 
+-- typeCheckList (ListVals ((BVal (BoolVal x)):[])) name = (LB name [x]) 
+-- typeCheckList (ListVals ((IVal x):(BVal xs):xss)) _  = error "List not of the same type"
+-- typeCheckList (ListVals ((BVal x):(IVal xs):xss)) _  = error "List not of the same type"
 -- typeCheckList (ListVals ((BVal (BoolVal x)):xs:xss)) name = (LB name x) ++ (typeCheckExpr (ListVals [xs:xss]) name)
 -- typeCheckList (ListVals ((IVal x):xs:xss)) name = (LI name x) ++ (typeCheckExpr (ListVals (xs:xss)) name)

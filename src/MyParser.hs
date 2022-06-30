@@ -88,7 +88,7 @@ data Type = Name String
           | List Type
     deriving Show
 
-data Expr = Add  Expr Expr  -- TODO: Optional to +, -, * of booleans
+data Expr = MyAdd  Expr Expr  -- TODO: Optional to +, -, * of booleans
           | Sub  Expr Expr
           | Mult Expr Expr
           | ListVals [Expr]
@@ -139,7 +139,7 @@ parseExpr :: Parser Expr
 parseExpr = parseExprHelp1 `chainr1` ((\_ -> Sub) <$> reserved "-") 
 
 parseExprHelp1 :: Parser Expr
-parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> Add) <$> reserved "+")
+parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MyAdd) <$> reserved "+")
 
 parseExprHelp2 :: Parser Expr
 parseExprHelp2 = parseExprHelp3 `chainr1` ((\_ -> Mult) <$> reserved "*")

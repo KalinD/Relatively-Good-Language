@@ -1,4 +1,3 @@
-% comment
 int x = 2 %- this is a comment -%
 int n = 1 
 n = n + n 
