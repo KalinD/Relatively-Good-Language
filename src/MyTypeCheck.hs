@@ -4,6 +4,7 @@ import MyParser as Parser
 
 -- Additional libraries
 import Data.Typeable (typeOf, TypeRep)
+import Debug.Trace
 
 data Program = Program [Statement] deriving Show
 
@@ -41,17 +42,38 @@ data Comparison = Smaller      Expression Expression
                 | Boolean Bool
     deriving Show
 
+type VarsMap = [(Int, String, String)]
+
 -- level, type, name
--- scope = [] :: [(Int, String)]
+-- scope = [] :: [(Int, String, String)]
+getLevel :: (Int, String, String) -> Int
 getLevel (level, _, _) = level
+getType :: (Int, String, String) -> String
 getType  (_, t, _)     = t
+getName :: (Int, String, String) -> String
 getName  (_, _, name)  = name
 
 typeCheckProg :: Prog -> Program
 typeCheckProg (Prog []) = (Program [])
-typeCheckProg (Prog stms) = (Program (fmap (\x -> typeCheckStatement x 0 []) stms))
+typeCheckProg (Prog stms) = (Program (fixStatements stms 0 []))
 
-typeCheckStatement :: Stm -> Int -> [(Int, String, String)] -> Statement
+fixStatements :: [Stm] -> Int -> VarsMap -> [Statement]
+fixStatements stms level vars = fmap (\x -> typeCheckStatement x level newVars) stms
+    where
+        newVars = vars ++ getVars stms level
+
+getVars :: [Stm] -> Int -> VarsMap
+getVars [] _ = []
+getVars (x:xs) level = getVar x level ++ (getVars xs level) 
+
+
+getVar :: Stm -> Int -> VarsMap
+getVar (CreateVar (Name t) name _) level = newVars
+    where
+        newVars = [(level, t, name)]
+getVar _ _ = []
+
+typeCheckStatement :: Stm -> Int -> VarsMap -> Statement
 typeCheckStatement (IfStm cmp stms1 elseIfs stms2) level vars =
         (If (typeCheckCompare cmp level vars) -- If comparison
             (fmap (\x -> typeCheckStatement x newLevel vars) stms1)  -- If statements
@@ -75,7 +97,7 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
-        typeCorrect = (getTypeOfExpr expr vars) == typeOf (stringToType (getType (head var)))
+        typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
 typeCheckStatement (CreateVar (Name t) name expr) level vars = (CreateVariable t name (typeCheckExpr expr level newVars))
     where
         newVars = vars ++ [(level, t, name)]
@@ -130,14 +152,14 @@ typeCheckCompare (A cmp1 cmp2) level vars = (And (typeCheckCompare cmp1 level va
 typeCheckCompare (O cmp1 cmp2) level vars = (Or (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
 typeCheckCompare (BoolVal b) _ _ = Boolean b
 
-getTypeOfExpr :: Expr -> [(Int, String, String)] -> TypeRep
+getTypeOfExpr :: Expr -> VarsMap -> TypeRep
 getTypeOfExpr (IVal val) _ = typeOf val
 getTypeOfExpr (BVal val) _ = typeOf val
 getTypeOfExpr (Id name) vars | length var > 0 = t
                              | otherwise      = error ("Variable '" ++ name ++ "' not found!")
     where
         var = filter (\x -> getName x == name) vars
-        t = typeOf (stringToType (getType (head var)))
+        t = stringToType (getType (head var))
 getTypeOfExpr (ListVals exprs) vars | allSameType = typeFirst
                                     | otherwise   =  error "Array doesn't have same type"
     where

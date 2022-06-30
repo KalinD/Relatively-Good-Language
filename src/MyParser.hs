@@ -51,7 +51,8 @@ languageDef =
     Token.caseSensitive = True,
     Token.commentStart = "%-",
     Token.commentEnd = "-%",
-    Token.commentLine = "%"
+    Token.commentLine = "%",
+    Token.nestedComments = False
   }
 
 
