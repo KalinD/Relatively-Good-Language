@@ -78,7 +78,6 @@ data Stm = IfStm Cmp [Stm] [(Cmp, [Stm])] [Stm]
          | LckEnd Integer
          | SeqThread [Stm]
          | AssignVal String Expr
-        --  | AssignArrVal String Expr Expr
          | CreateVar Type String Expr
          | Prnt Expr
          | Shrd Stm
@@ -89,7 +88,7 @@ data Type = Name String
     deriving Show
 
 data Expr = MyAdd  Expr Expr  -- TODO: Optional to +, -, * of booleans
-          | Sub  Expr Expr
+          | MySub  Expr Expr
           | Mult Expr Expr
           | ListVals [Expr]
           | IVal Integer
@@ -117,7 +116,6 @@ parseProg = Prog <$> (many parseStm)
 -- For Assign try to parse a nl or ; at the end. If it is not the end, try to parse again.
 parseStm :: Parser Stm
 parseStm =  try (AssignVal <$> identifier <*> (symbol "=" *> parseExpr))
-        -- <|> try (AssignArrVal <$> identifier <*> (brackets parseExpr) <*> (symbol "=" *> parseExpr))
         <|> CreateVar <$> parseType <*> (identifier <* symbol "=") <*> parseExpr
         <|> WhileLP <$> (reserved "pleaseDoWhile" *> (parens parseCmp)) <*> braces (many parseStm)
         <|> ParallelT <$> (reserved "allAtOnce" *> braces (many parseStm))
@@ -136,10 +134,10 @@ parseType =  (Name <$> symbol "int")
          <|> (List <$> (reserved "aFewOf" *> (brackets parseType)))
 
 parseExpr :: Parser Expr
-parseExpr = parseExprHelp1 `chainr1` ((\_ -> Sub) <$> reserved "-") 
+parseExpr = parseExprHelp1 `chainr1` ((\_ -> MyAdd) <$> reserved "+") 
 
 parseExprHelp1 :: Parser Expr
-parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MyAdd) <$> reserved "+")
+parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MySub) <$> reserved "-")
 
 parseExprHelp2 :: Parser Expr
 parseExprHelp2 = parseExprHelp3 `chainr1` ((\_ -> Mult) <$> reserved "*")
@@ -152,7 +150,6 @@ parseExprHelp3 =  (parens parseExpr)
 parseValue :: Parser Expr
 parseValue = (IVal <$> integer)
           <|> try (Id <$> identifier)
-        --   <|> (ArrVal <$> identifier <*> (brackets parseExpr))
           <|> (ListVals <$> brackets (comSep parseValue))
           <|> (BVal <$> parseCmp)
           
