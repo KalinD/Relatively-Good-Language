@@ -45,7 +45,7 @@ parseMyLang s = left show $ parseNumUntilEnd s
 
 languageDef =
   emptyDef {
-    Token.reservedOpNames = ["(" ,")", "{", "}", "-", "+", "*", "=", "==", "<", ">", "<=", ">=", "&&", "||"],
+    Token.reservedOpNames = ["(" ,")", "{", "}", "-", "+", "*", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||"],
     Token.reservedNames = ["whatIf", "butWhatIf", "else", "pleaseDoWhile",
         "allAtOnce", "hangingByAThread", "shared", "int", "bool", "aFewOf", "true", "false", "print", "doNotTouchThis", "nowYouCanTouchThis"], -- true and false might be redundant in here
     Token.caseSensitive = True,
@@ -104,7 +104,8 @@ data Cmp = Sm Expr Expr
          | SE Expr Expr  -- Extra
          | Bi Expr Expr
          | BE Expr Expr  -- Extra
-         | Eq Expr Expr
+         | MyEq Expr Expr
+         | NE Expr Expr
          | BoolVal Bool
          | A Cmp Cmp
          | O Cmp Cmp
@@ -165,7 +166,8 @@ parseCmpHelp2 =  try (BoolVal <$> (stringToBool <$> (symbol "true" <|> symbol "f
              <|> try (SE <$> (parseValue <* reserved "<=") <*> parseValue)
              <|> try (Bi <$> (parseValue <* reserved ">")  <*> parseValue)
              <|> try (BE <$> (parseValue <* reserved ">=") <*> parseValue)
-             <|> try (Eq <$> (parseValue <* reserved "==") <*> parseValue)
+             <|> try (MyEq <$> (parseValue <* reserved "==") <*> parseValue)
+             <|> try (NE <$> (parseValue <* reserved "!=") <*> parseValue)
 
 stringToBool :: String -> Bool
 stringToBool "true" = True

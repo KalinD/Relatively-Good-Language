@@ -15,7 +15,6 @@ data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statemen
                | LockEnd Integer
                | SequentialThread [Statement]
                | Assign String Expression
-               | AssignArr String Expression Expression
                | CreateVariable String String Expression
                | Print Expression
                | Shared Statement
@@ -32,11 +31,12 @@ data Expression = Addition       Expression Expression  -- TODO: Optional to +, 
 
 data Comparison = Smaller      Expression Expression
                 | Bigger       Expression Expression
-                | Equal        Expression Expression
+                | Eq           Expression Expression
+                | NotEqual     Expression Expression
                 | SmallerEqual Expression Expression
                 | BiggerEqual  Expression Expression
-                | And          Comparison Comparison
-                | Or          Comparison Comparison
+                | AndOp        Comparison Comparison
+                | OrOp         Comparison Comparison
                 | Boolean Bool
     deriving Show
 
@@ -159,14 +159,20 @@ typeCheckCompare (BE expr1 expr2) level vars | type1 == type2 && type1 == typeIn
         typeInteger = typeOf (0 :: Integer)
         type1 = getTypeOfExpr expr1 vars
         type2 = getTypeOfExpr expr2 vars
-typeCheckCompare (Eq expr1 expr2) level vars | type1 == type2 = (Equal (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+typeCheckCompare (MyEq expr1 expr2) level vars | type1 == type2 = (Eq (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
                                              | otherwise      = error "Type error in '=='"
     where
         typeInteger = typeOf (0 :: Integer)
         type1 = getTypeOfExpr expr1 vars
         type2 = getTypeOfExpr expr2 vars
-typeCheckCompare (A cmp1 cmp2) level vars = (And (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
-typeCheckCompare (O cmp1 cmp2) level vars = (Or (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
+typeCheckCompare (NE expr1 expr2) level vars | type1 == type2 = (NotEqual (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
+                                             | otherwise      = error "Type error in '=='"
+    where
+        typeInteger = typeOf (0 :: Integer)
+        type1 = getTypeOfExpr expr1 vars
+        type2 = getTypeOfExpr expr2 vars
+typeCheckCompare (A cmp1 cmp2) level vars = (AndOp (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
+typeCheckCompare (O cmp1 cmp2) level vars = (OrOp (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
 typeCheckCompare (BoolVal b) _ _ = Boolean b
 
 getTypeOfExpr :: Expr -> VarsMap -> TypeRep
