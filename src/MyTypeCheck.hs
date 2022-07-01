@@ -27,9 +27,6 @@ data Expression = Addition       Expression Expression  -- TODO: Optional to +, 
                 | I  Integer    -- Integer
                 | B  Bool       -- Boolean
                 | BComp Comparison
-                -- | LI [Integer]  -- List of Integers
-                -- | LB [Bool]     -- List of Booleans
-                -- | LL [Expression]     -- List of Lists
                 | Identifier String
     deriving Show
 
@@ -109,9 +106,15 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
         typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
-typeCheckStatement (CreateVar (Name t) name expr) level vars = (CreateVariable t name (typeCheckExpr expr level newVars))
+typeCheckStatement (CreateVar (Name t) name expr) level vars | correctType = CreateVariable t name (typeCheckExpr expr level newVars)
+                                                             | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where
         newVars = vars ++ [(level, t, name)]
+        exprType = getTypeOfExpr expr vars
+        boolType = typeOf True
+        intType = typeOf (0 :: Integer)
+        correctType = (exprType == boolType && t == "bool") || (exprType == intType && t == "int")
+
 typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level vars))
 typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
 
@@ -125,7 +128,7 @@ typeCheckElseIf (cmp, stms) level vars = ((typeCheckCompare cmp level vars), (fm
 typeCheckExpr :: Expr -> Int -> [(Int, String, String)] -> Expression
 typeCheckExpr (MyAdd expr1 expr2) level vars = (Addition (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
 typeCheckExpr (Mult expr1 expr2) level vars = (Multiplication (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
-typeCheckExpr (Sub expr1 expr2) level vars = (Subtraction (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
+typeCheckExpr (MySub expr1 expr2) level vars = (Subtraction (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
 typeCheckExpr (IVal val) _ _ = (I val) 
 typeCheckExpr (BVal (BoolVal val)) _ _ = (B val) 
 typeCheckExpr (BVal cmp) level vars = (BComp (typeCheckCompare cmp level vars))
@@ -181,8 +184,8 @@ getTypeOfExpr (ListVals exprs) vars | allSameType = typeFirst
         types = fmap (\x -> getTypeOfExpr x vars) exprs
         allSameType = all (\x -> typeOf x == typeFirst) types
 getTypeOfExpr (MyAdd expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
-                                     | type1 == type2 && type1 == typeInteger = typeInteger
-                                     | otherwise                              = error "Type missmatch in addition!"
+                                       | type1 == type2 && type1 == typeInteger = typeInteger
+                                       | otherwise                              = error "Type missmatch in addition!"
     where
         type1 = getTypeOfExpr expr1 vars
         type2 = getTypeOfExpr expr2 vars
@@ -196,7 +199,7 @@ getTypeOfExpr (Mult expr1 expr2) vars | type1 == type2 && type1 == typeBool    =
         type2 = getTypeOfExpr expr2 vars
         typeInteger = typeOf (0 :: Integer)
         typeBool = typeOf True
-getTypeOfExpr (Sub expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
+getTypeOfExpr (MySub expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
                                      | type1 == type2 && type1 == typeInteger = typeInteger
                                      | otherwise                              = error "Type missmatch in subtraction!"
     where
@@ -208,12 +211,3 @@ getTypeOfExpr (Sub expr1 expr2) vars | type1 == type2 && type1 == typeBool    = 
 stringToType :: String -> TypeRep
 stringToType "int"  = typeOf (0 :: Integer)
 stringToType "bool" = typeOf True
-
--- typeCheckList :: Expr -> String -> Expression
--- typeCheckList (ListVals []) name = (LL name []) 
--- typeCheckList (ListVals ((IVal x):[])) name = (LI name [x]) 
--- typeCheckList (ListVals ((BVal (BoolVal x)):[])) name = (LB name [x]) 
--- typeCheckList (ListVals ((IVal x):(BVal xs):xss)) _  = error "List not of the same type"
--- typeCheckList (ListVals ((BVal x):(IVal xs):xss)) _  = error "List not of the same type"
--- typeCheckList (ListVals ((BVal (BoolVal x)):xs:xss)) name = (LB name x) ++ (typeCheckExpr (ListVals [xs:xss]) name)
--- typeCheckList (ListVals ((IVal x):xs:xss)) name = (LI name x) ++ (typeCheckExpr (ListVals (xs:xss)) name)
