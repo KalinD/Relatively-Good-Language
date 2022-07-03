@@ -89,13 +89,13 @@ progGen :: Program -> [Instruction]
 progGen (Program []) = []
 progGen (Program stms) = getInstructions (statementsToInstructions stms 0 []) ++ [EndProg]
 
-p :: ([Instruction], Int, VarTable) -> [Instruction] -> ([Instruction], Int, VarTable)
-p (insts, addr, vt) instructions = (instructions ++ insts, addr, vt)
+combinInstructions :: ([Instruction], Int, VarTable) -> [Instruction] -> ([Instruction], Int, VarTable)
+combinInstructions (insts, addr, vt) instructions = (instructions ++ insts, addr, vt)
 
 statementsToInstructions :: [Statement] -> Int -> VarTable -> ([Instruction], Int, VarTable)
 statementsToInstructions statements addr rows = (instructions, ac, vt)
     where
-       (instructions, ac, vt) = foldl (\(accInst, accAc, accVt) x -> p (stmGen x accAc accVt) accInst) ([], addr, rows) statements
+       (instructions, ac, vt) = foldl (\(accInst, accAc, accVt) x -> combinInstructions (stmGen x accAc accVt) accInst) ([], addr, rows) statements
 
 
 getInstructions :: ([Instruction], Int, VarTable) -> [Instruction]
@@ -159,18 +159,22 @@ stmGen (If cmp stms1 elseIfs stms2) addr rows = (finalInstructions, finalAddr, f
 elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 elseIfGen elseIfs elseLength addr rows = (instructions, newAddr, newRows)
     where
-       (instructions, newAddr, newRows) = foldl (\(accInstr, accAddr, accRows) x -> p (singleElseIfGen x elseLength accAddr accRows) accInstr) ([], addr, rows) elseIfs
+       (instructions, newAddr, newRows, _) = foldr (\x (accInstr, accAddr, accRows, accLen) -> combineElseIfInstructions (singleElseIfGen x elseLength accLen accAddr accRows) accInstr) ([], addr, rows, 0) elseIfs
 
-singleElseIfGen :: (Comparison, [Statement]) -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
-singleElseIfGen (cmp, stms) elseLength addr rows = (instructions, newAddr, newRows)
+singleElseIfGen :: (Comparison, [Statement]) -> Int -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable, Int)
+singleElseIfGen (cmp, stms) elseLength prevLength addr rows = (instructions, newAddr, newRows, length instructions)
     where
         cmpInstructions = getInstructions (compareGen cmp 2 addr rows)
         numOfCmp = length cmpInstructions
         (stmsInstructions, newAddr, newRows) = statementsToInstructions stms addr rows
         numOfInstructions = length stmsInstructions
-        instructions | elseLength == 0 = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 1))] ++ stmsInstructions
-                     | elseLength > 0  = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ stmsInstructions ++ [Jump (Rel (elseLength + 1))]
-                     | otherwise       = error "Incorrect elseLength!" 
+        toSkip = prevLength + elseLength
+        instructions | toSkip == 0 = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 1))] ++ stmsInstructions
+                     | toSkip > 0  = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ stmsInstructions ++ [Jump (Rel (toSkip + 1))]
+                     | otherwise   = error "Incorrect elseLength!" 
+
+combineElseIfInstructions :: ([Instruction], Int, VarTable, Int) -> [Instruction] -> ([Instruction], Int, VarTable, Int)
+combineElseIfInstructions (inst, addr, rows, len) newInstr = (inst ++ newInstr, addr, rows, len)
 
 compareGen :: Comparison -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 compareGen (Smaller expr1 expr2) opNum addr rows = (instructions, addr, rows)
