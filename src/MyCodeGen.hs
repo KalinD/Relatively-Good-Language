@@ -93,7 +93,7 @@ p :: ([Instruction], Int, VarTable) -> [Instruction] -> ([Instruction], Int, Var
 p (insts, addr, vt) instructions = (instructions ++ insts, addr, vt)
 
 statementsToInstructions :: [Statement] -> Int -> VarTable -> ([Instruction], Int, VarTable)
-statementsToInstructions statements addr rows = (trace("In statementsToInstructions"))(instructions, ac, vt)
+statementsToInstructions statements addr rows = (instructions, ac, vt)
     where
        (instructions, ac, vt) = foldl (\(accInst, accAc, accVt) x -> p (stmGen x accAc accVt) accInst) ([], addr, rows) statements
 
@@ -110,6 +110,17 @@ getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
                     | otherwise       = error ("Variable '" ++ name ++ "' not found in memory!")
     where 
        vars = filter (\(n, scope, regAddr, memAddr) -> n == name) rows
+
+-- If Comparison [Statement] [(Comparison, [Statement])] [Statement]
+-- % While Comparison [Statement]
+-- Parallel [Statement]
+-- LockStart Integer
+-- LockEnd Integer
+-- SequentialThread [Statement]
+-- % Assign String Expression
+-- % CreateVariable String String Expression
+-- % Print Expression
+-- % Shared Statement
 
 -- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
 stmGen :: Statement -> Int -> VarTable -> ([Instruction], Int, VarTable)
@@ -130,47 +141,37 @@ stmGen (While cmp stms) addr rows = (instructions, newAddr, newRows)
        (compareInstructions, _, _) = compareGen cmp 2 addr rows
        numOfComp = length compareInstructions
        instructions = compareInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ stmsInstructions ++ [(Jump (Rel (-(numOfInstructions + 1 + numOfComp))))]
-stmGen (If cmp stms1 elseIfs stms2) addr rows | numOfElse == 0 && numOfElseIf == 0 = (ifInstructions, newAddr, newRows)
-                                              | numOfElse > 0 && numOfElseIf > 0   = (elseInstructions, elseAddr, elseRows)
-                                              | numOfElse > 0 && numOfElseIf == 0  = (elseInstructions, elseAddr, elseRows)
-                                              | numOfElse == 0 && numOfElseIf > 0  = (elseIfInstruction, elseIfAddr, elseIfRows)
-                                              
+stmGen (If cmp stms1 elseIfs stms2) addr rows = (finalInstructions, finalAddr, finalRows)
     where
-       (ifInstructions, newAddr, newRows) = statementsToInstructions stms1 addr rows
-       numOfIf = length ifInstructions
-       (compareInstructions, _, _) = compareGen cmp 2 addr rows
-       numOfComp = length compareInstructions
-       compWithBranch = compareInstructions ++ [Branch 2 (Rel (numOfIf + 2))]
-       afterIfInstr | numOfElse > 0 && numOfElseIf > 0   = compWithBranch ++ ifInstructions ++ [Jump (Rel (numOfElseIf + numOfElse))]
-                    | numOfElse > 0 && numOfElseIf == 0  = compareInstructions ++ [Branch 2 (Rel (numOfIf + 2 + numOfElse))] ++ ifInstructions
-                    | numOfElse == 0 && numOfElseIf > 0  = compWithBranch ++ ifInstructions ++ [Jump (Rel numOfElseIf)]
-                    | numOfElse == 0 && numOfElseIf == 0 = compWithBranch ++ ifInstructions
-       (elseIfInstruction, elseIfAddr, elseIfRows) = foldl (\(accInst, accAc, accVt) x -> p (elseIfGen x accAc accVt) accInst) (afterIfInstr, newAddr, newRows) elseIfs
-       numOfElseIf = length elseIfInstruction
-       (elseInstructions, elseAddr, elseRows) = statementsToInstructions stms2 elseIfAddr elseIfRows
-       numOfElse = length elseInstructions
+        ifCmpInstructions = getInstructions (compareGen cmp 2 addr rows)
+        numOfCmp = length ifCmpInstructions
+        (ifInstructions, newAddr, newRows) = statementsToInstructions stms1 addr rows
+        numOfIf = length ifInstructions
+        (elseIfInstructions, elseIfAddr, elseIfRows) = elseIfGen elseIfs numOfElse newAddr newRows
+        numOfElseIf = length elseIfInstructions
+        (elseInstructions, finalAddr, finalRows) = statementsToInstructions stms2 elseIfAddr elseIfRows
+        numOfElse = length elseInstructions
+        toSkip = numOfElseIf + numOfElse
+        ifInstr | toSkip == 0 = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 1))] ++ ifInstructions
+                | otherwise   = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 2))] ++ ifInstructions ++ [Jump (Rel (toSkip + 1))]
+        finalInstructions = ifInstr ++ elseIfInstructions ++ elseInstructions
 
-
-elseIfGen :: (Comparison, [Statement]) -> Int -> VarTable -> ([Instruction], Int, VarTable)
-elseIfGen (cmp, stms) addr rows = (instructions, newAddr, newRows)
+elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
+elseIfGen elseIfs elseLength addr rows = (instructions, newAddr, newRows)
     where
-       (compareInstructions, _, _) = compareGen cmp 2 addr rows
-       numOfComp = length compareInstructions
-       (stmsInstructions, newAddr, newRows) = statementsToInstructions stms addr rows
-       numOfInstructions = length stmsInstructions
-       instructions = compareInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ stmsInstructions
--- If Comparison [Statement] [(Comparison, [Statement])] [Statement]
--- % While Comparison [Statement]
--- Parallel [Statement]
--- LockStart Integer
--- LockEnd Integer
--- SequentialThread [Statement]
--- % Assign String Expression
--- % CreateVariable String String Expression
--- % Print Expression
--- % Shared Statement
+       (instructions, newAddr, newRows) = foldl (\(accInstr, accAddr, accRows) x -> p (singleElseIfGen x elseLength accAddr accRows) accInstr) ([], addr, rows) elseIfs
 
-     
+singleElseIfGen :: (Comparison, [Statement]) -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
+singleElseIfGen (cmp, stms) elseLength addr rows = (instructions, newAddr, newRows)
+    where
+        cmpInstructions = getInstructions (compareGen cmp 2 addr rows)
+        numOfCmp = length cmpInstructions
+        (stmsInstructions, newAddr, newRows) = statementsToInstructions stms addr rows
+        numOfInstructions = length stmsInstructions
+        instructions | elseLength == 0 = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 1))] ++ stmsInstructions
+                     | elseLength > 0  = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ stmsInstructions ++ [Jump (Rel (elseLength + 1))]
+                     | otherwise       = error "Incorrect elseLength!" 
+
 compareGen :: Comparison -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 compareGen (Smaller expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
