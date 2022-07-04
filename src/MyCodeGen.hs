@@ -1,89 +1,22 @@
-module MyCodeGen (codeGen) where
+module MyCodeGen where --(codeGen) where
 
 import Sprockell
 import MyTypeCheck
 import MyParser
 
 import Debug.Trace
-
-codeGen :: Integer -> [Instruction]
-codeGen n = [
-    Load (ImmValue $ fromInteger n) regE  -- upper bound is hardcoded
-    , Load (ImmValue 0) regA                -- first number
-    , Load (ImmValue 1) regB                -- second number
-
-    -- "beginloop"
-    , Compute Gt regA regE regC             -- regA > regE ?
-    , Branch regC (Abs 12)                  -- then jump to target "end"
-    , WriteInstr regA numberIO              -- output regA
-    , Compute Add regA regB regA
-    , Compute Gt regB regE regC             -- regB > regE
-    , Branch regC (Abs 12)                  -- target "end"
-    , WriteInstr regB numberIO              -- output regB
-    , Compute Add regA regB regB
-    , Jump (Rel (-8))                       -- target "beginloop"
-
-    -- "end"
-    , EndProg
-    ]
-
-
-fibGen :: Integer -> [Instruction]
-fibGen n = [
-    Load (ImmValue $ fromInteger n) regA,     -- n = (value from the argument)
-    Load (ImmValue 0) regB,                   -- i = 0
-    Load (ImmValue 0) regC,                   -- fst = 0
-    Load (ImmValue 1) regD,                   -- snd = 1
-    Compute LtE regB regA regE,               -- i <= n 
-    Branch regE (Abs 11),                     -- go to the end
-    Load (IndAddr regD) regF,                 -- temp = snd
-    Compute Add regC regD regD,               -- snd = fst + snd
-    Compute Add regF reg0 regC,               -- fst = temp
-    Compute Incr regB regB regB,              -- i = i + 1
-    Jump (Rel (-6)),                          -- back to the start of the while loop
-    WriteInstr regE numberIO,                 -- ouput snd
-
-    -- end
-    EndProg
-    ]
-
-fprog :: [Instruction]
-fprog = [ ReadInstr numberIO            -- ask the user for a number
-    , Receive regE                  -- save the number in regE
-
-    , Load (ImmValue 0) regA        -- first number
-    , Load (ImmValue 1) regB        -- second number
-
-    -- "beginloop"
-    , Compute Gt regA regE regC     -- regA > regE ?
-    , Branch regC (Abs 13)          -- then jump to target "end"
-    , WriteInstr regA numberIO      -- output regA
-    , Compute Add regA regB regA
-    , Compute Gt regB regE regC     -- regB > regE
-    , Branch regC (Abs 13)          -- target "end"
-    , WriteInstr regB numberIO      -- output regB
-    , Compute Add regA regB regB
-    , Jump (Rel (-8))               -- target "beginloop"
-
-    -- "end"
-    , EndProg
-    ]
-
-go = run [fprog, fprog, fprog]
-
-test :: [Instruction]
-test = [
-    Load (ImmValue 0) 2,
-    WriteInstr 2 numberIO,
-    Jump (Rel (-1)),
-    EndProg]
+import System.Environment
 
 -- Table: [(name, scope, regAddr, memAddr)]
 -- if regAddr or memAddr = -1 its not stored in the memory
-type VarTable = [(String, Int, Int, Int)]
+type VarTable = [(String, String, Bool, Int, Int, Int)]
 
-getMemAddress :: (String, Int, Int, Int) -> Int
-getMemAddress (_, _, _, addr) = addr
+getVarName :: (String, String, Bool, Int, Int, Int) -> String
+getVarName (name, _, _, _, _, _) = name
+getIsShared :: (String, String, Bool, Int, Int, Int) -> Bool
+getIsShared (_, _, shared, _, _, _) = shared
+getMemAddress :: (String, String, Bool, Int, Int, Int) -> Int
+getMemAddress (_, _, _, _, _, addr) = addr
 
 progGen :: Program -> [Instruction]
 progGen (Program []) = []
@@ -109,7 +42,7 @@ getVarAddress :: String -> VarTable -> Int
 getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
                     | otherwise       = error ("Variable '" ++ name ++ "' not found in memory!")
     where 
-       vars = filter (\(n, scope, regAddr, memAddr) -> n == name) rows
+       vars = filter (\x -> (getVarName x) == name) rows
 
 -- If Comparison [Statement] [(Comparison, [Statement])] [Statement]
 -- % While Comparison [Statement]
@@ -124,9 +57,19 @@ getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
 
 -- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
 stmGen :: Statement -> Int -> VarTable -> ([Instruction], Int, VarTable)
-stmGen (CreateVariable dtype name (I n)) addr rows = ([Load (ImmValue (fromIntegral n)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, 0, -1, addr)]))
-stmGen (CreateVariable dtype name (B b)) addr rows | b         = ([Load (ImmValue (fromIntegral 1)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, 0, -1, addr)]))
-                                                   | otherwise = ([Load (ImmValue (fromIntegral 0)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, 0, -1, addr)]))
+stmGen (CreateVariable dtype name (I n)) addr rows = ([Load (ImmValue (fromIntegral n)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
+stmGen (CreateVariable dtype name (B b)) addr rows | b         = ([Load (ImmValue (fromIntegral 1)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
+                                                   | otherwise = ([Load (ImmValue (fromIntegral 0)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
+stmGen (Shared (CreateVariable dtype name (I n))) addr rows = ([Load (ImmValue (fromIntegral n)) regA, WriteInstr regA (DirAddr sharedFreePosition)], addr, (rows++[(name, dtype, True, 0, -1, sharedFreePosition)]))
+    where
+        sharedVars = filter (\x -> getIsShared x) rows
+        sharedFreePosition = (foldl (\acc x -> max acc x) 7 (fmap getMemAddress sharedVars)) + 1
+stmGen (Shared (CreateVariable dtype name (B b))) addr rows | b         = ([Load (ImmValue (fromIntegral val)) regA, WriteInstr regA (DirAddr sharedFreePosition)], addr, (rows++[(name, dtype, True, 0, -1, sharedFreePosition)]))
+    where
+        val | b         = 1
+            | otherwise = 0
+        sharedVars = filter (\x -> getIsShared x) rows
+        sharedFreePosition = (foldl (\acc x -> max acc x) 7 (fmap getMemAddress sharedVars)) + 1
 stmGen (Assign name expr) addr rows = (instructions, addr, rows)
     where
        varAddress = getVarAddress name rows
@@ -155,6 +98,11 @@ stmGen (If cmp stms1 elseIfs stms2) addr rows = (finalInstructions, finalAddr, f
         ifInstr | toSkip == 0 = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 1))] ++ ifInstructions
                 | otherwise   = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 2))] ++ ifInstructions ++ [Jump (Rel (toSkip + 1))]
         finalInstructions = ifInstr ++ elseIfInstructions ++ elseInstructions
+-- stmGen (LockStart n) addr rows = ([TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))], addr, rows)
+
+-- stmGen (LockEnd n) addr rows = ([WriteInstr reg0 (DirAddr n)], addr, rows)
+
+-- stmGen (Parallel stms) addr rows =
 
 elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 elseIfGen elseIfs elseLength addr rows = (instructions, newAddr, newRows)
@@ -247,3 +195,11 @@ exprGen (B b) opNum addr rows | b         = ([Load (ImmValue (fromIntegral 1)) o
 exprGen (BComp comp) opNum addr rows = (instructions ++ [(Load (DirAddr opNum) opNum)], addr, rows)
     where
        (instructions, _, _) = compareGen comp (opNum + 1) addr rows
+
+main = do
+    fileDest <- getArgs
+    file <- readFile (head fileDest)
+    let sprockell = progGen (typeCheckProg (parser parseProg file))
+    run [sprockell]
+
+-- test code
