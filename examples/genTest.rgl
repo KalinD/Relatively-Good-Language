@@ -1,8 +1,50 @@
-int i = 0
-whatIf(i == 1){
-    print(1)
-}butWhatIf(i == 0){
-    print(0)
-}else {
-    print(10)
+int x = 0
+shared int i = 0
+allAtOnce {
+    hangingByAThread{
+        while(i < 10){
+            doNotTouchThis(2)
+            print(i)
+            i = i + 1
+            nowYouCanTouchThis(2)
+        }
+    }
+    hangingByAThread{
+        while(i < 10){
+            doNotTouchThis(2)
+            print(100 - i)
+            i = i + 1
+            nowYouCanTouchThis(2)
+        }
+    }
 }
+
+[[a][b]]
+[
+    ... -- int x = 0
+    ... -- shared int i = 0
+    parallel
+]
+
+a = [
+    int x = 0
+    shared i = 0
+]
+
+b = [
+    while(i < 10){
+        doNotTouchThis(2)
+        print(i)
+        nowYouCanTouchThis(2)
+    }
+]
+
+c = [
+    while(i < 10){
+        doNotTouchThis(2)
+        print(100 - i)
+        i = i + 1
+        nowYouCanTouchThis(2)
+    }
+]
+run [a,b,c]
