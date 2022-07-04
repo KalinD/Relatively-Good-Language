@@ -58,13 +58,15 @@ getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
 -- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
 stmGen :: Statement -> Int -> VarTable -> ([Instruction], Int, VarTable)
 stmGen (CreateVariable dtype name (I n)) addr rows = ([Load (ImmValue (fromIntegral n)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
-stmGen (CreateVariable dtype name (B b)) addr rows | b         = ([Load (ImmValue (fromIntegral 1)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
-                                                   | otherwise = ([Load (ImmValue (fromIntegral 0)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
+stmGen (CreateVariable dtype name (B b)) addr rows = ([Load (ImmValue (fromIntegral val)) regA, Store regA (DirAddr addr)], addr+1, (rows++[(name, dtype, False, 0, -1, addr)]))
+    where
+        val | b         = 1
+            | otherwise = 0
 stmGen (Shared (CreateVariable dtype name (I n))) addr rows = ([Load (ImmValue (fromIntegral n)) regA, WriteInstr regA (DirAddr sharedFreePosition)], addr, (rows++[(name, dtype, True, 0, -1, sharedFreePosition)]))
     where
         sharedVars = filter (\x -> getIsShared x) rows
         sharedFreePosition = (foldl (\acc x -> max acc x) 7 (fmap getMemAddress sharedVars)) + 1
-stmGen (Shared (CreateVariable dtype name (B b))) addr rows | b         = ([Load (ImmValue (fromIntegral val)) regA, WriteInstr regA (DirAddr sharedFreePosition)], addr, (rows++[(name, dtype, True, 0, -1, sharedFreePosition)]))
+stmGen (Shared (CreateVariable dtype name (B b))) addr rows = ([Load (ImmValue (fromIntegral val)) regA, WriteInstr regA (DirAddr sharedFreePosition)], addr, (rows++[(name, dtype, True, 0, -1, sharedFreePosition)]))
     where
         val | b         = 1
             | otherwise = 0
@@ -73,10 +75,12 @@ stmGen (Shared (CreateVariable dtype name (B b))) addr rows | b         = ([Load
 stmGen (Assign name expr) addr rows = (instructions, addr, rows)
     where
        varAddress = getVarAddress name rows
-       instructions = (getInstructions (exprGen expr 2 addr rows)) ++ [Store 2 (DirAddr varAddress)]
+       isShared = getIsShared (head (filter (\x -> getVarName x == name) rows))
+       instructions | not isShared = (getInstructions (exprGen expr 2 addr rows)) ++ [Store 2 (DirAddr varAddress)]
+                    | otherwise    = (getInstructions (exprGen expr 2 addr rows)) ++ [WriteInstr 2 (DirAddr varAddress)]
 stmGen (Print expr) addr rows = (instructions, addr, rows)
     where
-       instructions = getInstructions (exprGen expr 2 addr rows) ++ [WriteInstr 2 numberIO]
+        instructions = getInstructions (exprGen expr 2 addr rows) ++ [WriteInstr 2 numberIO]
 stmGen (While cmp stms) addr rows = (instructions, newAddr, newRows)
     where
        (stmsInstructions, newAddr, newRows) = statementsToInstructions stms addr rows
@@ -98,10 +102,8 @@ stmGen (If cmp stms1 elseIfs stms2) addr rows = (finalInstructions, finalAddr, f
         ifInstr | toSkip == 0 = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 1))] ++ ifInstructions
                 | otherwise   = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 2))] ++ ifInstructions ++ [Jump (Rel (toSkip + 1))]
         finalInstructions = ifInstr ++ elseIfInstructions ++ elseInstructions
--- stmGen (LockStart n) addr rows = ([TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))], addr, rows)
-
--- stmGen (LockEnd n) addr rows = ([WriteInstr reg0 (DirAddr n)], addr, rows)
-
+stmGen (LockStart n) addr rows = ([TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))], addr, rows)
+stmGen (LockEnd n) addr rows = ([WriteInstr reg0 (DirAddr (fromIntegral n))], addr, rows)
 -- stmGen (Parallel stms) addr rows =
 
 elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
@@ -186,9 +188,11 @@ exprGen (Subtraction expr1 expr2) opNum addr rows = (instructions, addr, rows)
 exprGen (Multiplication expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        instructions = (getInstructions (exprGen expr1 opNum addr rows)) ++ (getInstructions (exprGen expr2 (opNum + 1) addr rows)) ++ [Compute Mul opNum (opNum + 1) opNum]
-exprGen (Identifier id) opNum addr rows = ([Load (DirAddr varAddress) opNum], addr, rows)
+exprGen (Identifier id) opNum addr rows | isShared = ([ReadInstr (DirAddr varAddress), Receive opNum], addr, rows)
+                                        | otherwise = ([Load (DirAddr varAddress) opNum], addr, rows)
     where
        varAddress = getVarAddress id rows
+       isShared = getIsShared (head (filter (\x -> getVarName x == id) rows)) --------------------------------------------------------
 exprGen (I i) opNum addr rows = ([Load (ImmValue (fromIntegral i)) opNum], addr, rows)
 exprGen (B b) opNum addr rows | b         = ([Load (ImmValue (fromIntegral 1)) opNum], addr, rows)
                               | otherwise = ([Load (ImmValue (fromIntegral 0)) opNum], addr, rows)
@@ -203,3 +207,5 @@ main = do
     run [sprockell]
 
 -- test code
+runS :: String -> [Instruction]
+runS code = progGen (typeCheckProg (parser parseProg code))
