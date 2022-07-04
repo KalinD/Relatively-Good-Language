@@ -1,7 +1,7 @@
-int moneyAcc1 = 10
-int moneyAcc2 = 0
-int moneyAcc3 = 15
-int moneyAcc4 = 1
+shared int moneyAcc1 = 10
+shared int moneyAcc2 = 0
+shared int moneyAcc3 = 15
+shared int moneyAcc4 = 1
 
 allAtOnce
 {
@@ -27,12 +27,31 @@ allAtOnce
         doNotTouchThis(2) % wait
         moneyAcc3 = moneyAcc1 - 5
         moneyAcc4 = moneyAcc2 + 5
+        print(moneyAcc3)
         nowYouCanTouchThis(2)
     }
     hangingByAThread {
         doNotTouchThis(2)
         moneyAcc3 = moneyAcc1 - 5
         moneyAcc4 = moneyAcc2 + 5
+        print(moneyAcc3)
         nowYouCanTouchThis(2)
     }
 }
+
+rogram [
+    Shared (CreateVariable "int" "i" (I 0)),
+    Parallel [
+        SequentialThread [
+            LockStart 0,
+            Assign "i" (Addition (Identifier "i") (I 1)),
+            Print (Identifier "i"),LockEnd 0
+        ],
+         SequentialThread [
+            LockStart 0,
+            Assign "i" (Addition (Identifier "i") (I 1)),
+            Print (Subtraction (I 100) (Identifier "i")),
+            LockEnd 0
+        ]
+    ]
+]
