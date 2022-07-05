@@ -1,3 +1,3 @@
-# Changelog for my-lang
+# Changelog for relatively-good-language
 
 ## Unreleased changes

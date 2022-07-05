@@ -4,11 +4,9 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           Relatively-Good-Language
+name:           relatively-good-language
 version:        0.1.0.0
-description:    Implementation of MyLang.
-homepage:       https://github.com/MyGitHubHandle/MyLang#readme
-bug-reports:    https://github.com/MyGitHubHandle/MyLang/issues
+description:    Implementation of Relatively Good Language.
 author:         My Name
 maintainer:     my@address.here
 copyright:      2022 Author name here
@@ -18,16 +16,20 @@ build-type:     Simple
 extra-source-files:
     README.md
 
-source-repository head
-  type: git
-  location: https://github.com/MyGitHubHandle/MyLang
-
 library
   exposed-modules:
       MyCodeGen
       MyParser
+      MyTypeCheck
+      Sprockell
+      Sprockell.BasicFunctions
+      Sprockell.Debugger
+      Sprockell.HardwareTypes
+      Sprockell.Simulation
+      Sprockell.Sprockell
+      Sprockell.System
   other-modules:
-      Paths_my_lang
+      Paths_relatively_good_language
   hs-source-dirs:
       src
   build-depends:
@@ -38,10 +40,10 @@ library
     , sprockell >=2022.0
   default-language: Haskell2010
 
-executable my-lang-exe
+executable relatively-good-language-exe
   main-is: Main.hs
   other-modules:
-      Paths_my_lang
+      Paths_relatively_good_language
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -49,16 +51,16 @@ executable my-lang-exe
       QuickCheck ==2.14.*
     , base >=4.7 && <5
     , hspec ==2.8.*
-    , my-lang
     , parsec ==3.1.*
+    , relatively-good-language
     , sprockell >=2022.0
   default-language: Haskell2010
 
-test-suite my-lang-test
+test-suite relatively-good-language-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_my_lang
+      Paths_relatively_good_language
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -66,7 +68,7 @@ test-suite my-lang-test
       QuickCheck ==2.14.*
     , base >=4.7 && <5
     , hspec ==2.8.*
-    , my-lang
     , parsec ==3.1.*
+    , relatively-good-language
     , sprockell >=2022.0
   default-language: Haskell2010

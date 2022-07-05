@@ -21,7 +21,7 @@ library:
   source-dirs: src
 
 executables:
-  my-lang-exe:
+  relatively-good-language-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -29,10 +29,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - my-lang
+    - relatively-good-language
 
 tests:
-  my-lang-test:
+  relatively-good-language-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -40,4 +40,4 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - my-lang
+    - relatively-good-language

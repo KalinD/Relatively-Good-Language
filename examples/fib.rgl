@@ -1,4 +1,4 @@
-int n = 4
+int n = 10
 int i = 0
 int fst = 0
 int snd = 1
@@ -11,4 +11,4 @@ pleaseDoWhile(i < n) {
 	i = i + 1
 }
 
-print(snd)
+print(fst)

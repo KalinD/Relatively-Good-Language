@@ -13,3 +13,5 @@ allAtOnce {
         nowYouCanTouchThis(0)
     }
 }
+
+print(i)

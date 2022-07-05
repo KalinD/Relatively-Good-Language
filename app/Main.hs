@@ -1,14 +1,15 @@
 module Main where
 
-import MyParser (parseMyLang)
-import MyCodeGen (codeGen)
+import MyParser (parser, parseProg)
+import MyTypeCheck (typeCheckProg)
+import MyCodeGen (progGen)
 import Sprockell (run, Instruction)
 
 -- Compiles a number into a spril program producing all fibonacci numbers below the number
 -- Compilation might fail
-compile :: String -> Either String [Instruction]
+compile :: String -> [Instruction]
 compile txt = do
-    ast <- parseMyLang txt
+    ast <- typeCheckProg (parser parseProg txt)
     pure $ codeGen ast
 
 -- Gets a number and runs the resulting spril program of compilation succeeds
