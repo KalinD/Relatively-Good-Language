@@ -73,7 +73,7 @@ stmGen (Assign name expr) addr rows locks oldInstructions = ([instructions], add
        instructions | not isShared = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [Store 2 (DirAddr varAddress)]
                     | otherwise    = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [WriteInstr 2 (DirAddr varAddress)]
 stmGen (Print expr) addr rows locks oldInstructions = 
-    trace("\nIn PRINT: \nOld: " ++ show oldInstructions ++ "\nNew: " ++ show [instructions] ++ "\n")
+    --trace("\nIn PRINT: \nOld: " ++ show oldInstructions ++ "\nNew: " ++ show [instructions] ++ "\n")
     ([instructions], addr, rows, locks)
     where
         ois | length oldInstructions > 0 = head oldInstructions
