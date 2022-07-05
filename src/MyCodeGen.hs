@@ -117,7 +117,7 @@ stmGen (LockEnd n) addr rows locks oldInstructions = ([instructions], addr, rows
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         instructions = ois ++ [WriteInstr reg0 (DirAddr (fromIntegral n))]
-stmGen (Parallel stms) addr rows locks oldInstructions = (trace("\nParallel RESULT: " ++ show finalInstr ++ "\n"))
+stmGen (Parallel stms) addr rows locks oldInstructions = --(trace("\nParallel RESULT: " ++ show finalInstr ++ "\n"))
     (finalInstr, newAddr, newRows, finalLocks)
     where
         (instr, newAddr, newRows, newLocks) = foldl (\(accInstr, accAddr, accRows, accLocks) x -> combineInstructions (stmGen x accAddr accRows accLocks []) accInstr) ([], addr, rows, locks) stms
