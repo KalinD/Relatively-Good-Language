@@ -115,7 +115,7 @@ typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = err
         boolType = typeOf True
         intType = typeOf (0 :: Integer)
         correctType = (exprType == boolType && t == "bool") || (exprType == intType && t == "int")
-        varExists = length (filter (\x -> getVarName x == name) vars) > 0
+        varExists = length (filter (\x -> getName x == name) vars) > 0
 
 typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level vars))
 typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
