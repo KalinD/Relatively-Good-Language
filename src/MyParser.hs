@@ -20,10 +20,12 @@ import Data.Either
 
 
 -- From lab files
+-- Returns the left side of an Either type
 fromLeft' :: Either l r -> l
 fromLeft' (Left x) = x
 
 -- From lab files
+-- Returns the right side of an Either type
 fromRight' :: Either l r -> r
 fromRight' (Right x) = x
 
@@ -43,6 +45,7 @@ parseNumUntilEnd = parse (num <* eof) ""
 
 parseMyLang s = left show $ parseNumUntilEnd s
 
+-- Language definition, specifies reserved names, operators, and symbols
 languageDef =
   emptyDef {
     Token.reservedOpNames = ["(" ,")", "{", "}", "-", "+", "*", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||"],
@@ -68,6 +71,7 @@ reserved   = Token.reserved lexer
 comSep     = commaSep lexer
 
 
+-- EDSL for Relatively-Good-Language, to create an AST from a given source code input
 data Prog = Prog [Stm] deriving Show
 
                -- if (cmp)     { stms }     else if (cmp) { stms }     else { stms } 
@@ -111,6 +115,7 @@ data Cmp = Sm Expr Expr
          | O Cmp Cmp
     deriving Show
 
+-- Parses a source code into a type Prog with a list of Stm
 parseProg :: Parser Prog
 parseProg = Prog <$> (many parseStm)
 
@@ -134,9 +139,11 @@ parseType =  (Name <$> symbol "int")
          <|> (Name <$> symbol "bool")
          <|> (List <$> (reserved "aFewOf" *> (brackets parseType)))
 
+-- Parser for expression
 parseExpr :: Parser Expr
 parseExpr = parseExprHelp1 `chainr1` ((\_ -> MyAdd) <$> reserved "+") 
 
+-- Helper functions to parse expression
 parseExprHelp1 :: Parser Expr
 parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MySub) <$> reserved "-")
 
@@ -147,16 +154,19 @@ parseExprHelp3 :: Parser Expr
 parseExprHelp3 =  (parens parseExpr)
               <|> try (BVal <$> parseCmp)
               <|> (parseValue)
-    
+
+-- Parser for value
 parseValue :: Parser Expr
 parseValue = (IVal <$> integer)
           <|> try (Id <$> identifier)
           <|> (ListVals <$> brackets (comSep parseValue))
           <|> (BVal <$> parseCmp)
           
+-- Parser for comparison
 parseCmp :: Parser Cmp
 parseCmp = parseCmpHelp1 `chainr1` ((\_ -> O) <$> reserved "||")
 
+-- Helper functions to parse comparison
 parseCmpHelp1 :: Parser Cmp
 parseCmpHelp1 = parseCmpHelp2 `chainr1` ((\_ -> A) <$> reserved "&&")
 
@@ -169,6 +179,7 @@ parseCmpHelp2 =  try (BoolVal <$> (stringToBool <$> (symbol "true" <|> symbol "f
              <|> try (MyEq <$> (parseValue <* reserved "==") <*> parseValue)
              <|> try (NE <$> (parseValue <* reserved "!=") <*> parseValue)
 
+-- Converts string representation of a boolean in RGL into Haskell's Bool type
 stringToBool :: String -> Bool
 stringToBool "true" = True
 stringToBool "false" = False
