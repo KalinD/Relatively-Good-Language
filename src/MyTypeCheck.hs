@@ -104,7 +104,7 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && not typeCorre
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
-typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = error ("Variable '" ++ show name ++  "' esists already!")
+typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = error ("Variable '" ++ show name ++  "' exists already!")
                                                              | correctType = CreateVariable t name (typeCheckExpr expr level newVars)
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where
