@@ -1,16 +1,16 @@
 shared int i = 0
 allAtOnce {
     hangingByAThread{
-        doNotTouchThis(0)
+        doNotTouchThis(1)
         i = i + 1
         print(i)
-        nowYouCanTouchThis(0)
+        nowYouCanTouchThis(1)
     }
     hangingByAThread{
-        doNotTouchThis(0)
+        doNotTouchThis(1)
         i = i + 1
-        print(100 - i)
-        nowYouCanTouchThis(0)
+        print(i)
+        nowYouCanTouchThis(1)
     }
 }
 

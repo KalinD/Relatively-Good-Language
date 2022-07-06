@@ -21,7 +21,6 @@ library
       MyCodeGen
       MyParser
       MyTypeCheck
-      Sprockell
   other-modules:
       Paths_relatively_good_language
   hs-source-dirs:

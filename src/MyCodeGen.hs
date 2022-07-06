@@ -1,4 +1,4 @@
-module MyCodeGen where --(codeGen) where
+module MyCodeGen where
 
 import Sprockell
 import MyTypeCheck
@@ -8,32 +8,27 @@ import Debug.Trace
 import System.Environment
 import Data.List
 
--- Table: [(name, type, isShared, scope, memAddr)]
+{- An address is in reality an integer. -}
 type Address = Int
+{- table with variables. Contains theis name, type, are they in shared memory, their scope, and their memory address. -}
 type VarTable = [(String, String, Bool, Int, Address)]
 type LockTable = [(Address, Bool)] -- lock (True) or latch (False)
 
+{- Latches start at address 4 in shared memory -}
 latchStart = (4 :: Int)
+{- There are a maximum of 4 latches -}
+numLatches = (4 :: Int)
+{- There are a maximum of 4 locks -}
+numLocks   = (4 :: Int)
 
-getVarName :: (String, String, Bool, Int, Int) -> String
+{- Getters for VarTable, returning variable name, whether it is shared, and the memory address. -}
+getVarName :: (String, String, Bool, Int, Address) -> String
 getVarName (name, _, _, _, _) = name
-getIsShared :: (String, String, Bool, Int, Int) -> Bool
+getIsShared :: (String, String, Bool, Int, Address) -> Bool
 getIsShared (_, _, shared, _, _) = shared
-getMemAddress :: (String, String, Bool, Int, Int) -> Int
+getMemAddress :: (String, String, Bool, Int, Address) -> Int
 getMemAddress (_, _, _, _, addr) = addr
-
-progGen :: Program -> [[Instruction]]
-progGen (Program []) = []
-progGen (Program stms) = res
-    where
-        intermediate = getInstructions (statementsToInstructions stms 0 [] [])
-        res = fmap (\x -> x ++ [EndProg]) intermediate
-
-statementsToInstructions :: [Statement] -> Int -> VarTable -> LockTable -> ([[Instruction]], Int, VarTable, LockTable)
-statementsToInstructions statements addr rows locks = (instructions, ac, vt, lt)
-    where
-       (instructions, ac, vt, lt) = foldl (\(accInst, accAc, accVt, accLt) x -> (stmGen x accAc accVt accLt accInst)) ([], addr, rows, locks) statements
-
+{- More helper getters -}
 getInstructions :: (a, Int, VarTable, LockTable) -> a
 getInstructions (i, _, _, _) = i
 getInstructionsWithoutLock :: (a, Int, VarTable) -> a
@@ -45,12 +40,28 @@ getVarTable (_, _, vt, _) = vt
 getLockTable :: ([Instruction], Int, VarTable, LockTable) -> LockTable
 getLockTable (_, _, _, lt) = lt
 
+{- Main code generator. Start form here to generate the Sprockell instruction. -}
+progGen :: Program -> [[Instruction]]
+progGen (Program []) = []
+progGen (Program stms) = res
+    where
+        intermediate = getInstructions (statementsToInstructions stms 0 [] [])
+        res = fmap (\x -> x ++ [EndProg]) intermediate
+
+{- Converts a list of statements to the corresponding Sprockell instruction. -}
+statementsToInstructions :: [Statement] -> Int -> VarTable -> LockTable -> ([[Instruction]], Int, VarTable, LockTable)
+statementsToInstructions statements addr rows locks = (instructions, ac, vt, lt)
+    where
+       (instructions, ac, vt, lt) = foldl (\(accInst, accAc, accVt, accLt) x -> (stmGen x accAc accVt accLt accInst)) ([], addr, rows, locks) statements
+
+{- Get the address of a variable from the VarTable using a string, returns an error if the variable is not in memory. -}
 getVarAddress :: String -> VarTable -> Int
 getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
                         | otherwise       = error ("Variable '" ++ name ++ "' not found in memory!")
     where 
        vars = filter (\x -> (getVarName x) == name) rows
 
+{- Statement generator, converts modified EDSL into Sprockell instructions -}
 -- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
 stmGen :: Statement -> Int -> VarTable -> LockTable -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
 stmGen (CreateVariable dtype name expr) addr rows locks oldInstructions = (finalInstructions, addr+1, (rows++[(name, dtype, False, 0, addr)]), locks)
@@ -130,14 +141,24 @@ stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, new
     where
         (instr, newAddr, newRows, newLocks) = foldl (\(accInstr, accAddr, accRows, accLocks) x -> combineInstructions (stmGen x accAddr accRows accLocks []) accInstr) ([], addr, rows, locks) stms
         latches = filter (\(addr, b) -> not b) newLocks
-        firstFreeLatch | length latches == 4 = error "Can't create more than 4 parallel blocks!"
+        firstFreeLatch | length latches == numLatches = error ("Can't create more than " ++ show numLatches ++ " parallel blocks!")
                        | length latches >= 0  = length latches
+        locksList = filter (\(addr, b) -> b) newLocks
+        firstFreeLock | (length locksList) == numLocks = error "Not enough memory for another parallel block!"
+                      | (length locksList) >= 0 = length locksList
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         latchAddr = firstFreeLatch + latchStart
+        lockAddr = firstFreeLock
+        numChildren = length stms
+        -- finalLocks = newLocks ++ [(lockAddr, True),(latchAddr, False)]
         finalLocks = newLocks ++ [(latchAddr, False)]
         latchCheck = [ReadInstr (DirAddr latchAddr), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
-        finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
+        notifyParent = (aLockGen lockAddr) ++ [ReadInstr (DirAddr latchAddr), Receive regA, Compute Incr regA regA regA, WriteInstr regA (DirAddr latchAddr)] ++ (rLockGen lockAddr)
+        waitForChildren = [Load (ImmValue (numChildren+1)) regB, ReadInstr (DirAddr latchAddr), Receive regA, Compute Equal regA regB regA, Branch regA (Rel 2), Jump (Rel (-4))]
+        removeLock = [WriteInstr reg0 (DirAddr latchAddr)]
+        -- finalInstr = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
+        finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr)]) ++ waitForChildren ++ removeLock] ++ ((fmap (\x -> latchCheck ++ x ++ notifyParent) instr))
 stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, newLock)
     where
         (instr, finalAddr, finalRows, newLock) = foldl (\(accInstr, accAddr, accRows, accLock) x -> stmGen x accAddr accRows accLock accInstr) ([], addr, rows, locks) stms
@@ -146,15 +167,18 @@ stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructi
         instructions = ois ++ (head instr)
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 
+{- Append new instructions to the old ones. -}
 combineInstructions :: ([[Instruction]], Int, VarTable, LockTable) -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
 combineInstructions (oldInstructions, addr, rows, locks) newInstructions = (oldInstructions ++ newInstructions, addr, rows, locks)
 
+{- Helper generator fot the "else if" statements -}
 elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> LockTable -> ([Instruction], Int, VarTable, LockTable)
 elseIfGen elseIfs elseLength addr rows locks = (instructions, newAddr, newRows, newLock)
     where
 
        (instructions, newAddr, newRows, newLock, _) = foldr (\x (accInstr, accAddr, accRows, accLock, accLen) -> combineElseIfInstructions (singleElseIfGen x elseLength accLen accAddr accRows accLock) accInstr) ([], addr, rows, locks, 0) elseIfs
 
+{- Helper for a single "else if" statement. -}
 singleElseIfGen :: (Comparison, [Statement]) -> Int -> Int -> Int -> VarTable -> LockTable -> ([[Instruction]], Int, VarTable, LockTable, Int)
 singleElseIfGen (cmp, stms) elseLength prevLength addr rows locks = ([instructions], newAddr, newRows, newLock, length instructions)
     where
@@ -167,10 +191,11 @@ singleElseIfGen (cmp, stms) elseLength prevLength addr rows locks = ([instructio
                      | toSkip > 0  = cmpInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [Jump (Rel (toSkip + 1))]
                      | otherwise   = error "Incorrect elseLength!" 
         
-
+{- Proper combiner for the "else if" instructions. -}
 combineElseIfInstructions :: ([[Instruction]], Int, VarTable, LockTable, Int) -> [Instruction] -> ([Instruction], Int, VarTable, LockTable, Int)
 combineElseIfInstructions (inst, addr, rows, locks, len) newInstr = ((head inst) ++ newInstr, addr, rows, locks, len)
 
+{- Generator for the compare statements. -}
 compareGen :: Comparison -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 compareGen (Smaller expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
@@ -223,6 +248,7 @@ compareGen (OrOp comp1 comp2) opNum addr rows = (instructions, addr, rows)
        comp2Instr = getInstructionsWithoutLock (compareGen comp2 newOpNum addr rows)
        instructions = comp1Instr ++ comp2Instr ++ [Compute Or opNum newOpNum opNum]
 
+{- Generates Sprockell instructions from expression. -}
 exprGen :: Expression -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 exprGen (Addition expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
@@ -245,16 +271,26 @@ exprGen (BComp comp) opNum addr rows = (instructions ++ [(Load (DirAddr opNum) o
     where
        (instructions, _, _) = compareGen comp opNum addr rows 
 
+{- Generates SPRIL to acquire a lock at the given address -}
+aLockGen :: Int -> [Instruction]
+aLockGen addr = [TestAndSet (DirAddr (fromIntegral addr)), Receive regA, Compute Equal reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
+
+{- Generates SPRIL to release a lock at the given address. -}
+rLockGen :: Int -> [Instruction]
+rLockGen addr = [WriteInstr reg0 (DirAddr (fromIntegral addr))]
+
+{- Main driver defined using monad notation.
+ - To run the program with a file "fib.rgl" in folder "examples" use `stack run "./examples/fib.rgl"` -}
 main = do
     fileDest <- getArgs
     file <- readFile (head fileDest)
     let sprockells = progGen (typeCheckProg (parser parseProg file))
-    -- putStrLn ("Sprockell: " ++ show sprockells)
-    -- putStrLn (show (parser parseProg file))
-    -- putStrLn (show (typeCheckProg (parser parseProg file)))
-    -- putStrLn (show (typeCheckProg (parser parseProg file)))
-    run sprockells
-    
+    -- let prog = [[Load (ImmValue 0) 2,WriteInstr 2 (DirAddr 8),TestAndSet (DirAddr 4),Load (ImmValue 3) 3,ReadInstr (DirAddr 4),Receive 2,Compute Equal 2 3 2,Branch 2 (Rel 2),Jump (Rel (-4)),WriteInstr 0 (DirAddr 0),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3,ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),Load (ImmValue 100) 2,ReadInstr (DirAddr 8),Receive 3,Compute Sub 2 3 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3, ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg]]
+    putStrLn ("Sprockell: " ++ show sprockells)
+    -- let tmp = init prog
+    -- putStrLn (show tmp)
+    -- run sprockells
+    runWithDebugger (debuggerSimplePrintAndWait myShow) sprockells
 
 -- test code
 runS :: String -> [[Instruction]]

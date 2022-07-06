@@ -1,10 +1,11 @@
-module MyTypeCheck where -- (typeCheck) where
+module MyTypeCheck where
 
 import MyParser as Parser
 
 -- Additional libraries
 import Data.Typeable (typeOf, TypeRep)
 
+{- Modified EDSL, another intermediate representation to support type and scope checking -}
 data Program = Program [Statement] deriving Show
 
 data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statement]
@@ -41,8 +42,7 @@ data Comparison = Smaller      Expression Expression
 
 type VarsMap = [(Int, String, String)]
 
--- level, type, name
--- scope = [] :: [(Int, String, String)]
+{- A scope specifies a level, type, and name of a variable. Underneath are the supporting getters -}
 getLevel :: (Int, String, String) -> Int
 getLevel (level, _, _) = level
 getType :: (Int, String, String) -> String
@@ -50,29 +50,33 @@ getType  (_, t, _)     = t
 getName :: (Int, String, String) -> String
 getName  (_, _, name)  = name
 
+{- Main type check function. Start from here -}
 typeCheckProg :: Prog -> Program
 typeCheckProg (Prog []) = (Program [])
 typeCheckProg (Prog stms) = (Program (fixStatements stms 0 []))
 
+{- Type checking statements required already done variable table. This method helps with that. -}
 fixStatements :: [Stm] -> Int -> VarsMap -> [Statement]
 fixStatements stms level vars = fmap (\x -> typeCheckStatement x level newVars) stms
     where
         newVars = vars ++ getVars stms level
 
+{- Gets all created variables from a lost of statements. -}
 getVars :: [Stm] -> Int -> VarsMap
 getVars [] _ = []
 getVars (x:xs) level = getVar x level ++ (getVars xs level) 
 
-
+{- Get a single variable from a single statement. Only in two statements is creation of a variable possible.  -}
 getVar :: Stm -> Int -> VarsMap
-getVar (CreateVar (Name t) name _) level = newVars
+getVar (CreateVar t name _) level = newVars
     where
         newVars = [(level, t, name)]
-getVar (Shrd (CreateVar (Name t) name _)) level = newVars
+getVar (Shrd (CreateVar t name _)) level = newVars
     where
         newVars = [(level, t, name)]
 getVar _ _ = []
 
+{- Verifies that a statement is of the correct type and all variables are within the scope. -}
 typeCheckStatement :: Stm -> Int -> VarsMap -> Statement
 typeCheckStatement (IfStm cmp stms1 elseIfs stms2) level vars =
         (If (typeCheckCompare cmp level vars) -- If comparison
@@ -105,7 +109,7 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
         typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
-typeCheckStatement (CreateVar (Name t) name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
+typeCheckStatement (CreateVar t name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
                                                              | varExists   = error ("Variable " ++ show name ++  " exists already!")
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where
@@ -119,13 +123,14 @@ typeCheckStatement (CreateVar (Name t) name expr) level vars | correctType && no
 typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level vars))
 typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
 
+{- Helper function to type check the "else if" statements. -}
 typeCheckElseIf :: (Cmp, [Stm]) -> Int -> [(Int, String, String)] -> (Comparison, [Statement])
 typeCheckElseIf (cmp, stms) level vars = ((typeCheckCompare cmp level vars), (fmap (\x -> typeCheckStatement x newLevel newVars) stms))
     where 
         newLevel = level + 1
         newVars = vars ++ getVars stms newLevel
 
- 
+{- Type checking and scope validating for expressions -}
 typeCheckExpr :: Expr -> Int -> [(Int, String, String)] -> Expression
 typeCheckExpr (MyAdd expr1 expr2) level vars = (Addition (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
 typeCheckExpr (Mult expr1 expr2) level vars = (Multiplication (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars)) 
@@ -135,6 +140,7 @@ typeCheckExpr (BVal (BoolVal val)) _ _ = (B val)
 typeCheckExpr (BVal cmp) level vars = (BComp (typeCheckCompare cmp level vars))
 typeCheckExpr (Id name) _ _ = (Identifier name)
 
+{- Checks for type and scope errors in comparison expressions. -}
 typeCheckCompare :: Cmp -> Int -> [(Int, String, String)] -> Comparison
 typeCheckCompare (Sm expr1 expr2) level vars | type1 == type2 && type1 == typeInteger = (Smaller (typeCheckExpr expr1 level vars) (typeCheckExpr expr2 level vars))
                                              | otherwise                              = error "Type error in '<'"
@@ -176,6 +182,7 @@ typeCheckCompare (A cmp1 cmp2) level vars = (AndOp (typeCheckCompare cmp1 level 
 typeCheckCompare (O cmp1 cmp2) level vars = (OrOp (typeCheckCompare cmp1 level vars) (typeCheckCompare cmp2 level vars))
 typeCheckCompare (BoolVal b) _ _ = Boolean b
 
+{- Gets the type of an expression, returns errors if variable is not found or types mismatch. -}
 getTypeOfExpr :: Expr -> VarsMap -> TypeRep
 getTypeOfExpr (IVal val) _ = typeOf val
 getTypeOfExpr (BVal _) _ = typeOf True
@@ -184,12 +191,6 @@ getTypeOfExpr (Id name) vars | length var > 0 = t
     where
         var = filter (\x -> getName x == name) vars
         t = stringToType (getType (head var))
-getTypeOfExpr (ListVals exprs) vars | allSameType = typeFirst
-                                    | otherwise   =  error "Array doesn't have same type"
-    where
-        typeFirst = getTypeOfExpr (head exprs) vars
-        types = fmap (\x -> getTypeOfExpr x vars) exprs
-        allSameType = all (\x -> typeOf x == typeFirst) types
 getTypeOfExpr (MyAdd expr1 expr2) vars | type1 == type2 && type1 == typeBool    = typeBool
                                        | type1 == type2 && type1 == typeInteger = typeInteger
                                        | otherwise                              = error "Type missmatch in addition!"
@@ -215,6 +216,7 @@ getTypeOfExpr (MySub expr1 expr2) vars | type1 == type2 && type1 == typeBool    
         typeInteger = typeOf (0 :: Integer)
         typeBool = typeOf True
 
+{- Converts a string to a type representation from Data.Typeable library. -}
 stringToType :: String -> TypeRep
 stringToType "int"  = typeOf (0 :: Integer)
 stringToType "bool" = typeOf True
