@@ -99,13 +99,15 @@ typeCheckStatement (SeqThread stms) level vars = (SequentialThread (fmap (\x -> 
     where 
         newLevel = level + 1
         newVars = vars ++ getVars stms newLevel
-typeCheckStatement (AssignVal name expr) level vars | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
-                                                    | otherwise                    = error ("Variable '" ++ name ++ "' doesn't exists")
+typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect     = (Assign name (typeCheckExpr expr level vars))
+                                                    | varExists && not typeCorrect = error ("Variable " ++ name ++ " is not of correct type")
+                                                    | otherwise                    = error ("Variable " ++ name ++ " doesn't exists")
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
-typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = error ("Variable '" ++ show name ++  "' exists already!")
-                                                             | correctType = CreateVariable t name (typeCheckExpr expr level newVars)
+        typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
+typeCheckStatement (CreateVar (Name t) name expr) level vars | trace(show vars)correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
+                                                             | varExists   = error ("Variable " ++ show name ++  " exists already!")
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where
         newVars = vars ++ [(level, t, name)]
@@ -113,7 +115,7 @@ typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = err
         boolType = typeOf True
         intType = typeOf (0 :: Integer)
         correctType = (exprType == boolType && t == "bool") || (exprType == intType && t == "int")
-        varExists = length (filter (\x -> getName x == name) vars) > 0
+        varExists = length (filter (\x -> getName x == name) vars) > 1
 
 typeCheckStatement (Prnt expr) level vars = (Print (typeCheckExpr expr level vars))
 typeCheckStatement (Shrd stm) level vars = (Shared (typeCheckStatement stm level vars))
