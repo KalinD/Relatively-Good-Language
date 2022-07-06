@@ -6,6 +6,7 @@ import MyParser
 
 import Debug.Trace
 import System.Environment
+import Data.List
 
 -- Table: [(name, type, isShared, scope, memAddr)]
 type Address = Int
@@ -52,35 +53,37 @@ getVarAddress name rows | length vars > 0 = getMemAddress (head vars)
 
 -- statement to generate -> addr counter -> (instructions to perform, addr counter, variable table)
 stmGen :: Statement -> Int -> VarTable -> LockTable -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
-stmGen (CreateVariable dtype name expr) addr rows locks oldInstructions = ([newInstr], addr+1, (rows++[(name, dtype, False, 0, addr)]), locks)
+stmGen (CreateVariable dtype name expr) addr rows locks oldInstructions = (finalInstructions, addr+1, (rows++[(name, dtype, False, 0, addr)]), locks)
     where
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        newInstr = ois ++ (getInstructionsWithoutLock (exprGen expr regA addr rows)) ++ [Store regA (DirAddr addr)]
-stmGen (Shared (CreateVariable dtype name expr)) addr rows locks oldInstructions = ([newInstr], addr, (rows++[(name, dtype, True, 0, sharedFreePosition)]), locks)
+        instructions = ois ++ (getInstructionsWithoutLock (exprGen expr regA addr rows)) ++ [Store regA (DirAddr addr)]
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (Shared (CreateVariable dtype name expr)) addr rows locks oldInstructions = (finalInstructions, addr, (rows++[(name, dtype, True, 0, sharedFreePosition)]), locks)
     where
         sharedVars = filter (\x -> getIsShared x) rows
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         sharedFreePosition = (foldl (\acc x -> max acc x) 7 (fmap getMemAddress sharedVars)) + 1
-        newInstr = ois ++ (getInstructionsWithoutLock (exprGen expr regA addr rows)) ++ [WriteInstr regA (DirAddr sharedFreePosition)]
-stmGen (Assign name expr) addr rows locks oldInstructions = ([instructions], addr, rows, locks)
+        instructions = ois ++ (getInstructionsWithoutLock (exprGen expr regA addr rows)) ++ [WriteInstr regA (DirAddr sharedFreePosition)]
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (Assign name expr) addr rows locks oldInstructions = (finalInstructions, addr, rows, locks)
     where
-       varAddress = getVarAddress name rows
-       isShared = getIsShared (head (filter (\x -> getVarName x == name) rows))
-       ois | length oldInstructions > 0 = head oldInstructions
+        varAddress = getVarAddress name rows
+        isShared = getIsShared (head (filter (\x -> getVarName x == name) rows))
+        ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-       instructions | not isShared = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [Store 2 (DirAddr varAddress)]
+        instructions | not isShared = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [Store 2 (DirAddr varAddress)]
                     | otherwise    = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [WriteInstr 2 (DirAddr varAddress)]
-stmGen (Print expr) addr rows locks oldInstructions = 
-    --trace("\nIn PRINT: \nOld: " ++ show oldInstructions ++ "\nNew: " ++ show [instructions] ++ "\n")
-    ([instructions], addr, rows, locks)
+                    
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (Print expr) addr rows locks oldInstructions = (finalInstructions, addr, rows, locks)
     where
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-
         instructions = ois ++ (getInstructionsWithoutLock (exprGen expr 2 addr rows)) ++ [WriteInstr 2 numberIO]
-stmGen (While cmp stms) addr rows locks oldInstructions = ([instructions], newAddr, newRows, locks)
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (While cmp stms) addr rows locks oldInstructions = (finalInstructions, newAddr, newRows, locks)
     where
         (stmsInstructions, newAddr, newRows, _) = statementsToInstructions stms addr rows locks
         numOfInstructions = length (head stmsInstructions)
@@ -88,8 +91,9 @@ stmGen (While cmp stms) addr rows locks oldInstructions = ([instructions], newAd
         numOfComp = length compareInstructions
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        instructions = ois ++ compareInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [(Jump (Rel (-(numOfInstructions + 1 + numOfComp))))]
-stmGen (If cmp stms1 elseIfs stms2) addr rows locks oldInstructions = ([finalInstructions], finalAddr, finalRows, locks)
+        instructions = ois ++ compareInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [(Jump (Rel (-(numOfInstructions + 2 + numOfComp))))]
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (If cmp stms1 elseIfs stms2) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, locks)
     where
         ifCmpInstructions = getInstructionsWithoutLock (compareGen cmp 2 addr rows)
         numOfCmp = length ifCmpInstructions
@@ -98,27 +102,31 @@ stmGen (If cmp stms1 elseIfs stms2) addr rows locks oldInstructions = ([finalIns
         (elseIfInstructions, elseIfAddr, elseIfRows, _) = elseIfGen elseIfs numOfElse newAddr newRows locks
         numOfElseIf = length elseIfInstructions
         (elseInstructions, finalAddr, finalRows, _) = statementsToInstructions stms2 elseIfAddr elseIfRows locks
-        numOfElse = length (head elseInstructions)
+        numOfElse | length elseInstructions > 0 = length (head elseInstructions)
+                  | otherwise                   = 0 
         toSkip = numOfElseIf + numOfElse
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        ifInstr | toSkip == 0 = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 1))] ++ (head ifInstructions)
-                | otherwise   = ifCmpInstructions ++ [Branch 2 (Rel (numOfIf + 2))] ++ (head ifInstructions) ++ [Jump (Rel (toSkip + 1))]
-        finalInstructions = ois ++ ifInstr ++ elseIfInstructions ++ (head elseInstructions)
-stmGen (LockStart n) addr rows locks oldInstructions = ([instructions], addr, rows, newLocks)
+        ifInstr | toSkip == 0 = ifCmpInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfIf + 1))] ++ (head ifInstructions)
+                | otherwise   = ifCmpInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfIf + 2))] ++ (head ifInstructions) ++ [Jump (Rel (toSkip + 1))]
+        instructions | numOfElse > 0 = ois ++ ifInstr ++ elseIfInstructions ++ (head elseInstructions)
+                     | otherwise     = ois ++ ifInstr ++ elseIfInstructions 
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (LockStart n) addr rows locks oldInstructions = (finalInstructions, addr, rows, newLocks)
     where
         newLocks = locks ++ [((fromIntegral n), True)]
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         instructions = ois ++ [TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute Equal reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
-stmGen (LockEnd n) addr rows locks oldInstructions = ([instructions], addr, rows, newLocks)
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (LockEnd n) addr rows locks oldInstructions = (finalInstructions, addr, rows, newLocks)
     where
         newLocks = filter (\(addr, b) -> (fromIntegral addr) /= n) locks
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         instructions = ois ++ [WriteInstr reg0 (DirAddr (fromIntegral n))]
-stmGen (Parallel stms) addr rows locks oldInstructions = --(trace("\nParallel RESULT: " ++ show finalInstr ++ "\n"))
-    (finalInstr, newAddr, newRows, finalLocks)
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, newAddr, newRows, finalLocks)
     where
         (instr, newAddr, newRows, newLocks) = foldl (\(accInstr, accAddr, accRows, accLocks) x -> combineInstructions (stmGen x accAddr accRows accLocks []) accInstr) ([], addr, rows, locks) stms
         latches = filter (\(addr, b) -> not b) newLocks
@@ -129,13 +137,14 @@ stmGen (Parallel stms) addr rows locks oldInstructions = --(trace("\nParallel RE
         latchAddr = firstFreeLatch + latchStart
         finalLocks = newLocks ++ [(latchAddr, False)]
         latchCheck = [ReadInstr (DirAddr latchAddr), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
-        finalInstr = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
-stmGen (SequentialThread stms) addr rows locks oldInstructions = ([instructions], finalAddr, finalRows, newLock)
+        finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
+stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, newLock)
     where
         (instr, finalAddr, finalRows, newLock) = foldl (\(accInstr, accAddr, accRows, accLock) x -> stmGen x accAddr accRows accLock accInstr) ([], addr, rows, locks) stms
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []    
         instructions = ois ++ (head instr)
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 
 combineInstructions :: ([[Instruction]], Int, VarTable, LockTable) -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
 combineInstructions (oldInstructions, addr, rows, locks) newInstructions = (oldInstructions ++ newInstructions, addr, rows, locks)
@@ -152,11 +161,12 @@ singleElseIfGen (cmp, stms) elseLength prevLength addr rows locks = ([instructio
         cmpInstructions = getInstructionsWithoutLock (compareGen cmp 2 addr rows)
         numOfCmp = length cmpInstructions
         (stmsInstructions, newAddr, newRows, newLock) = statementsToInstructions stms addr rows locks
-        numOfInstructions = length stmsInstructions
+        numOfInstructions = length (head stmsInstructions)
         toSkip = prevLength + elseLength
-        instructions | toSkip == 0 = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 1))] ++ (head stmsInstructions)
-                     | toSkip > 0  = cmpInstructions ++ [Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [Jump (Rel (toSkip + 1))]
+        instructions | toSkip == 0 = cmpInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 1))] ++ (head stmsInstructions)
+                     | toSkip > 0  = cmpInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [Jump (Rel (toSkip + 1))]
                      | otherwise   = error "Incorrect elseLength!" 
+        
 
 combineElseIfInstructions :: ([[Instruction]], Int, VarTable, LockTable, Int) -> [Instruction] -> ([Instruction], Int, VarTable, LockTable, Int)
 combineElseIfInstructions (inst, addr, rows, locks, len) newInstr = ((head inst) ++ newInstr, addr, rows, locks, len)
@@ -167,37 +177,37 @@ compareGen (Smaller expr1 expr2) opNum addr rows = (instructions, addr, rows)
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute GtE opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute Lt opNum nextOpNum opNum]
 compareGen (Bigger expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute LtE opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute Gt opNum nextOpNum opNum]
 compareGen (SmallerEqual expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute Gt opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute LtE opNum nextOpNum opNum]
 compareGen (BiggerEqual expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute Lt opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute GtE opNum nextOpNum opNum]
 compareGen (Eq expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute NEq opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute Equal opNum nextOpNum opNum]
 compareGen (NotEqual expr1 expr2) opNum addr rows = (instructions, addr, rows)
     where
        (expr1Instr, _, _) = exprGen expr1 opNum addr rows  
        (expr2Instr, _, _) = exprGen expr2 nextOpNum addr rows
        nextOpNum = opNum + 1
-       instructions = expr1Instr ++ expr2Instr ++ [Compute Equal opNum nextOpNum opNum]
+       instructions = expr1Instr ++ expr2Instr ++ [Compute NEq opNum nextOpNum opNum]
 compareGen (Boolean b) opNum addr rows | b         = ([Load (ImmValue 1) opNum], addr, rows)
                                        | otherwise = ([Load (ImmValue 0) opNum], addr, rows)
 compareGen (AndOp comp1 comp2) opNum addr rows = (instructions, addr, rows)
@@ -205,13 +215,13 @@ compareGen (AndOp comp1 comp2) opNum addr rows = (instructions, addr, rows)
        comp1Instr = getInstructionsWithoutLock (compareGen comp1 opNum addr rows)
        newOpNum = opNum + 1
        comp2Instr = getInstructionsWithoutLock (compareGen comp2 newOpNum addr rows)
-       instructions = comp1Instr ++ comp2Instr ++ [Compute Or opNum newOpNum opNum]
+       instructions = comp1Instr ++ comp2Instr ++ [Compute And opNum newOpNum opNum]
 compareGen (OrOp comp1 comp2) opNum addr rows = (instructions, addr, rows)
     where
        comp1Instr = getInstructionsWithoutLock (compareGen comp1 opNum addr rows)
        newOpNum = opNum + 1
        comp2Instr = getInstructionsWithoutLock (compareGen comp2 newOpNum addr rows)
-       instructions = comp1Instr ++ comp2Instr ++ [Compute And opNum newOpNum opNum]
+       instructions = comp1Instr ++ comp2Instr ++ [Compute Or opNum newOpNum opNum]
 
 exprGen :: Expression -> Int -> Int -> VarTable -> ([Instruction], Int, VarTable)
 exprGen (Addition expr1 expr2) opNum addr rows = (instructions, addr, rows)
@@ -233,18 +243,18 @@ exprGen (B b) opNum addr rows | b         = ([Load (ImmValue (fromIntegral 1)) o
                               | otherwise = ([Load (ImmValue (fromIntegral 0)) opNum], addr, rows)
 exprGen (BComp comp) opNum addr rows = (instructions ++ [(Load (DirAddr opNum) opNum)], addr, rows)
     where
-       (instructions, _, _) = compareGen comp (opNum + 1) addr rows 
+       (instructions, _, _) = compareGen comp opNum addr rows 
 
 main = do
     fileDest <- getArgs
     file <- readFile (head fileDest)
-    -- let parsed = (parser parseProg file)
-    -- putStrLn ("Parsed: " ++ show parsed)
-    -- let typed = typeCheckProg (parser parseProg file)
-    -- putStrLn ("Typed: " ++ show typed)
     let sprockells = progGen (typeCheckProg (parser parseProg file))
     -- putStrLn ("Sprockell: " ++ show sprockells)
+    -- putStrLn (show (parser parseProg file))
+    -- putStrLn (show (typeCheckProg (parser parseProg file)))
+    -- putStrLn (show (typeCheckProg (parser parseProg file)))
     run sprockells
+    
 
 -- test code
 runS :: String -> [[Instruction]]

@@ -4,7 +4,6 @@ import MyParser as Parser
 
 -- Additional libraries
 import Data.Typeable (typeOf, TypeRep)
-import Debug.Trace
 
 data Program = Program [Statement] deriving Show
 
@@ -106,7 +105,7 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
         typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
-typeCheckStatement (CreateVar (Name t) name expr) level vars | trace(show vars)correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
+typeCheckStatement (CreateVar (Name t) name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
                                                              | varExists   = error ("Variable " ++ show name ++  " exists already!")
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where

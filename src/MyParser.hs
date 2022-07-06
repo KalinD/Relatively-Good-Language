@@ -162,10 +162,10 @@ parseCmpHelp1 = parseCmpHelp2 `chainr1` ((\_ -> A) <$> reserved "&&")
 
 parseCmpHelp2 :: Parser Cmp
 parseCmpHelp2 =  try (BoolVal <$> (stringToBool <$> (symbol "true" <|> symbol "false")))
-             <|> try (Sm <$> (parseValue <* reserved "<")  <*> parseValue)
              <|> try (SE <$> (parseValue <* reserved "<=") <*> parseValue)
-             <|> try (Bi <$> (parseValue <* reserved ">")  <*> parseValue)
+             <|> try (Sm <$> (parseValue <* reserved "<")  <*> parseValue)
              <|> try (BE <$> (parseValue <* reserved ">=") <*> parseValue)
+             <|> try (Bi <$> (parseValue <* reserved ">")  <*> parseValue)
              <|> try (MyEq <$> (parseValue <* reserved "==") <*> parseValue)
              <|> try (NE <$> (parseValue <* reserved "!=") <*> parseValue)
 
