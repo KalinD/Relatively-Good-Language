@@ -99,13 +99,11 @@ typeCheckStatement (SeqThread stms) level vars = (SequentialThread (fmap (\x -> 
     where 
         newLevel = level + 1
         newVars = vars ++ getVars stms newLevel
-typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect     = (Assign name (typeCheckExpr expr level vars))
-                                                    | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
+typeCheckStatement (AssignVal name expr) level vars | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
                                                     | otherwise                    = error ("Variable '" ++ name ++ "' doesn't exists")
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
-        typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
 typeCheckStatement (CreateVar (Name t) name expr) level vars | varExists   = error ("Variable '" ++ show name ++  "' esists already!")
                                                              | correctType = CreateVariable t name (typeCheckExpr expr level newVars)
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
