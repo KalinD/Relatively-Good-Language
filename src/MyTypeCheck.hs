@@ -18,7 +18,7 @@ data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statemen
                | CreateVariable String String Expression
                | Print Expression
                | Shared Statement
-    deriving Show
+    deriving (Show, Eq)
 
 data Expression = Addition       Expression Expression  -- TODO: Optional to +, -, * of booleans
                 | Subtraction    Expression Expression
@@ -27,7 +27,7 @@ data Expression = Addition       Expression Expression  -- TODO: Optional to +, 
                 | B  Bool       -- Boolean
                 | BComp Comparison
                 | Identifier String
-    deriving Show
+    deriving (Show, Eq)
 
 data Comparison = Smaller      Expression Expression
                 | Bigger       Expression Expression
@@ -38,7 +38,7 @@ data Comparison = Smaller      Expression Expression
                 | AndOp        Comparison Comparison
                 | OrOp         Comparison Comparison
                 | Boolean Bool
-    deriving Show
+    deriving (Show, Eq)
 
 type VarsMap = [(Int, String, String)]
 

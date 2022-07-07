@@ -71,10 +71,10 @@ data Stm = IfStm Cmp [Stm] [(Cmp, [Stm])] [Stm] -- whatIf (cmp) { (stm)+ } (butW
          | LckEnd Integer                       -- nowYouCanTouchThis (int)
          | SeqThread [Stm]                      -- hangingByAThread { (stm)+ }
          | AssignVal String Expr                -- str = expr
-         | CreateVar String String Expr           -- type str = expr
+         | CreateVar String String Expr         -- type str = expr
          | Prnt Expr                            -- print(expr)
          | Shrd Stm                             -- shared stm 
-    deriving Show
+    deriving (Show, Eq)
 
 data Expr = MyAdd  Expr Expr  -- expr + expr
           | MySub  Expr Expr  -- expr - expr
