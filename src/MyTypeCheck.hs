@@ -103,14 +103,14 @@ typeCheckStatement (SeqThread stms) level vars = (SequentialThread (fmap (\x -> 
         newLevel = level + 1
         newVars = vars ++ getVars stms newLevel
 typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect     = (Assign name (typeCheckExpr expr level vars))
-                                                    | varExists && not typeCorrect = error ("Variable " ++ name ++ " is not of correct type")
-                                                    | otherwise                    = error ("Variable " ++ name ++ " doesn't exists")
+                                                    | varExists && not typeCorrect = error ("Variable '" ++ name ++ "' is not of correct type")
+                                                    | otherwise                    = error ("Variable '" ++ name ++ "' doesn't exists")
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
         typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
 typeCheckStatement (CreateVar t name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
-                                                             | varExists   = error ("Variable " ++ show name ++  " exists already!")
+                                                             | varExists   = error ("Variable '" ++ name ++  "' exists already!")
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
     where
         newVars = vars ++ [(level, t, name)]
@@ -138,7 +138,12 @@ typeCheckExpr (MySub expr1 expr2) level vars = (Subtraction (typeCheckExpr expr1
 typeCheckExpr (IVal val) _ _ = (I val) 
 typeCheckExpr (BVal (BoolVal val)) _ _ = (B val) 
 typeCheckExpr (BVal cmp) level vars = (BComp (typeCheckCompare cmp level vars))
-typeCheckExpr (Id name) _ _ = (Identifier name)
+typeCheckExpr (Id name) level vars | varExists = (Identifier name)
+                                   | otherwise = error ("Variable '" ++ name ++ "' doesn't exist!")
+    where
+        var = filter (\x -> getName x == name) vars
+        varExists = length var > 0
+
 
 {- Checks for type and scope errors in comparison expressions. -}
 typeCheckCompare :: Cmp -> Int -> [(Int, String, String)] -> Comparison

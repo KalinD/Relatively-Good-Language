@@ -159,13 +159,19 @@ stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, new
         removeLock = [WriteInstr reg0 (DirAddr latchAddr)]
         -- finalInstr = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
         finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr), Receive regA]) ++ waitForChildren ++ removeLock] ++ ((fmap (\x -> latchCheck ++ x ++ notifyParent) instr))
-stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, newLock)
+stmGen (SequentialThread stms) addr rows locks oldInstructions = 
+    -- trace("Old Instructions: " ++ show oldInstructions)
+    -- trace("\nInstr: " ++ show instr)
+    -- trace("\nInstructions: " ++ show instructions)
+    -- trace("\nFinal Instructions: " ++ show finalInstructions)
+    (finalInstructions, finalAddr, finalRows, newLock)
     where
+        -- (instr, finalAddr, finalRows, newLock) = statementsToInstructions stms addr rows locks
         (instr, finalAddr, finalRows, newLock) = foldl (\(accInstr, accAddr, accRows, accLock) x -> stmGen x accAddr accRows accLock accInstr) ([], addr, rows, locks) stms
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []    
         instructions = ois ++ (head instr)
-        finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
+        finalInstructions = [instructions] ++ (oldInstructions \\ [ois]) ++ tail instr
 
 {- Append new instructions to the old ones. -}
 combineInstructions :: ([[Instruction]], Int, VarTable, LockTable) -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
@@ -284,9 +290,13 @@ rLockGen addr = [WriteInstr reg0 (DirAddr (fromIntegral addr))]
 main = do
     fileDest <- getArgs
     file <- readFile (head fileDest)
-    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    let parsed = parser parseProg file
+    let typeChecked = typeCheckProg parsed
+    let sprockells = progGen typeChecked
     -- let prog = [[Load (ImmValue 0) 2,WriteInstr 2 (DirAddr 8),TestAndSet (DirAddr 4),Load (ImmValue 3) 3,ReadInstr (DirAddr 4),Receive 2,Compute Equal 2 3 2,Branch 2 (Rel 2),Jump (Rel (-4)),WriteInstr 0 (DirAddr 0),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3,ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),Load (ImmValue 100) 2,ReadInstr (DirAddr 8),Receive 3,Compute Sub 2 3 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3, ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg]]
-    putStrLn ("Sprockell: " ++ show sprockells)
+    putStrLn ("Parsed: " ++ show parsed)
+    putStrLn ("\nType Checked: " ++ show typeChecked)
+    putStrLn ("\nSprockel: " ++ show sprockells)
     -- let tmp = init prog
     -- putStrLn (show tmp)
     run sprockells

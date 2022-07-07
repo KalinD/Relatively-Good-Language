@@ -82,7 +82,7 @@ data Expr = MyAdd  Expr Expr  -- expr + expr
           | IVal Integer      -- int
           | BVal Cmp          -- cmp
           | Id String         -- identifier
-    deriving Show
+    deriving (Show, Eq)
 
 {- Compare type to handle comparison. Can handle 
  - less or equal (<=), less than (<), larger or equal(>=), larger than (>), and equals (==) comparisons.
@@ -96,7 +96,7 @@ data Cmp = Sm Expr Expr    -- expr < expr
          | BoolVal Bool    -- bool
          | A Cmp Cmp       -- cmp && cmp
          | O Cmp Cmp       -- cmp || cmp
-    deriving Show
+    deriving (Show, Eq)
 
 {- Main parser. Parses the whole program. Start from here -}
 parseProg :: Parser Prog

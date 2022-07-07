@@ -1,9 +1,9 @@
-shared int i = 0
+shared int x = 0
 shared int y = 0
 allAtOnce {
   hangingByAThread {
-    i = i + 2
-    print(i)
+    x = x + 2
+    print(x)
   }
   hangingByAThread {
     y = y + 1
@@ -11,19 +11,3 @@ allAtOnce {
   }
 }
 print(x + y)
-
-When allAtOnce is started, count variable chosen in shared memory and wait until it is equal to number of children
-In child threads, acquire lock on count variable at the end and increment it by one
-
-[
-  [
-    Load (ImmValue 0) 2,WriteInstr 2 (DirAddr 8),Load (ImmValue 0) 2,WriteInstr 2 (DirAddr 9),TestAndSet (DirAddr 4),EndProg
-  ],
-  [
-    ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 9),Receive 2,Load (ImmValue 1) 3,Compute Add 2 3 2,WriteInstr 2 (DirAddr 9),ReadInstr (DirAddr 9),Receive 2,WriteInstr 2 (DirAddr 65536),EndProg
-  ],
-  [
-    ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 8),Receive 2,Load (ImmValue 2) 3,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),EndProg
-  ]
-]
-

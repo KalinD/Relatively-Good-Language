@@ -6,4 +6,4 @@ main :: IO ()
 main = hspec $ do
   describe "Parsing" $ do
     it "should parse numbers" $ do
-        property $ \n -> (parseMyLang $ show (getPositive n)) `shouldBe` (Right (getPositive n) :: Either String Integer)
+        property $ \n -> ((parser parseExpr) $ show n) `shouldBe` (IVal n)
