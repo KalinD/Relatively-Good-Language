@@ -3,7 +3,7 @@ allAtOnce {
     hangingByAThread{
         doNotTouchThis(1)
         i = i + 1
-        print(i)
+        print(100 - i)
         nowYouCanTouchThis(1)
     }
     hangingByAThread{

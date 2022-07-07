@@ -128,7 +128,7 @@ stmGen (LockStart n) addr rows locks oldInstructions = (finalInstructions, addr,
         newLocks = locks ++ [((fromIntegral n), True)]
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        instructions = ois ++ [TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute Equal reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
+        instructions = ois ++ [TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 stmGen (LockEnd n) addr rows locks oldInstructions = (finalInstructions, addr, rows, newLocks)
     where
@@ -158,7 +158,7 @@ stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, new
         waitForChildren = [Load (ImmValue (numChildren+1)) regB, ReadInstr (DirAddr latchAddr), Receive regA, Compute Equal regA regB regA, Branch regA (Rel 2), Jump (Rel (-4))]
         removeLock = [WriteInstr reg0 (DirAddr latchAddr)]
         -- finalInstr = [(ois ++ [TestAndSet (DirAddr latchAddr)])] ++ ((fmap (\x -> latchCheck ++ x) instr))
-        finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr)]) ++ waitForChildren ++ removeLock] ++ ((fmap (\x -> latchCheck ++ x ++ notifyParent) instr))
+        finalInstructions = [(ois ++ [TestAndSet (DirAddr latchAddr), Receive regA]) ++ waitForChildren ++ removeLock] ++ ((fmap (\x -> latchCheck ++ x ++ notifyParent) instr))
 stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, newLock)
     where
         (instr, finalAddr, finalRows, newLock) = foldl (\(accInstr, accAddr, accRows, accLock) x -> stmGen x accAddr accRows accLock accInstr) ([], addr, rows, locks) stms
@@ -267,13 +267,13 @@ exprGen (Identifier id) opNum addr rows | isShared = ([ReadInstr (DirAddr varAdd
 exprGen (I i) opNum addr rows = ([Load (ImmValue (fromIntegral i)) opNum], addr, rows)
 exprGen (B b) opNum addr rows | b         = ([Load (ImmValue (fromIntegral 1)) opNum], addr, rows)
                               | otherwise = ([Load (ImmValue (fromIntegral 0)) opNum], addr, rows)
-exprGen (BComp comp) opNum addr rows = (instructions ++ [(Load (DirAddr opNum) opNum)], addr, rows)
+exprGen (BComp comp) opNum addr rows = (instructions, addr, rows)
     where
        (instructions, _, _) = compareGen comp opNum addr rows 
 
 {- Generates SPRIL to acquire a lock at the given address -}
 aLockGen :: Int -> [Instruction]
-aLockGen addr = [TestAndSet (DirAddr (fromIntegral addr)), Receive regA, Compute Equal reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
+aLockGen addr = [TestAndSet (DirAddr (fromIntegral addr)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
 
 {- Generates SPRIL to release a lock at the given address. -}
 rLockGen :: Int -> [Instruction]
@@ -289,8 +289,8 @@ main = do
     putStrLn ("Sprockell: " ++ show sprockells)
     -- let tmp = init prog
     -- putStrLn (show tmp)
-    -- run sprockells
-    runWithDebugger (debuggerSimplePrintAndWait myShow) sprockells
+    run sprockells
+    -- runWithDebugger (debuggerSimplePrintAndWait myShow) sprockells
 
 -- test code
 runS :: String -> [[Instruction]]
