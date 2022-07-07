@@ -10,7 +10,7 @@ import Data.List
 
 {- An address is in reality an integer. -}
 type Address = Int
-{- table with variables. Contains theis name, type, are they in shared memory, their scope, and their memory address. -}
+{- table with variables. Contains their name, type, are they in shared memory, their scope, and their memory address. -}
 type VarTable = [(String, String, Bool, Int, Address)]
 type LockTable = [(Address, Bool)] -- lock (True) or latch (False)
 
@@ -269,7 +269,7 @@ exprGen (Identifier id) opNum addr rows | isShared = ([ReadInstr (DirAddr varAdd
                                         | otherwise = ([Load (DirAddr varAddress) opNum], addr, rows)
     where
        varAddress = getVarAddress id rows
-       isShared = getIsShared (head (filter (\x -> getVarName x == id) rows)) --------------------------------------------------------
+       isShared = getIsShared (head (filter (\x -> getVarName x == id) rows))
 exprGen (I i) opNum addr rows = ([Load (ImmValue (fromIntegral i)) opNum], addr, rows)
 exprGen (B b) opNum addr rows | b         = ([Load (ImmValue (fromIntegral 1)) opNum], addr, rows)
                               | otherwise = ([Load (ImmValue (fromIntegral 0)) opNum], addr, rows)

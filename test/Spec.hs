@@ -1,5 +1,7 @@
 import MyParser
 import MyTypeCheck
+import MyCodeGen hiding (main)
+import Sprockell
 import Test.Hspec
 import Test.QuickCheck
 import Data.Typeable (typeOf)
@@ -190,3 +192,85 @@ main = hspec $ do
         it "Print" $ do
             (typeCheckStatement (Prnt (IVal 1)) 0 []) `shouldBe` (Print (I 1))
             (typeCheckStatement (Prnt (Id "i")) 0 [(0, "int", "i")]) `shouldBe` (Print (Identifier "i"))
+    describe "Program TypeCheck" $ do
+        it "Parallel program example" $ do
+            file <- readFile "./examples/parallel.rgl"
+            (typeCheckProg (parser parseProg file)) `shouldBe` (Program [
+                (Shared (CreateVariable "int" "i" (I 0))),
+                (Parallel [
+                    (SequentialThread [
+                        (LockStart 2),
+                        (Assign "i" (Addition (Identifier "i") (I 1))),
+                        (Print (Subtraction (I 100) (Identifier "i"))),
+                        (LockEnd 2),
+                        (Parallel [
+                            (SequentialThread [
+                                (Print (Addition (Identifier "i") (I 2)))
+                            ]),
+                            (SequentialThread [
+                                (Print (Addition (Identifier "i") (I 1)))
+                            ])
+                        ])
+                    ]),
+                    (SequentialThread [
+                        (LockStart 2),
+                        (Assign "i" (Addition (Identifier "i") (I 1))),
+                        (Print (Identifier "i")),
+                        (LockEnd 2)
+                    ])
+                ]),
+                (Print (Identifier "i"))
+                ])
+    describe "Sprockell Code generation for Expressions" $ do
+        it "Code generation for Integer" $ do
+            property $ \n -> (exprGen (I n) regA 0 [])  `shouldBe` ([(Load (ImmValue (fromIntegral n)) regA)], 0, [])
+        it "Code generation for Boolean" $ do
+            (exprGen (B True) regA 0 [])  `shouldBe` ([(Load (ImmValue (fromIntegral 1)) regA)], 0, [])
+            (exprGen (B False) regA 0 [])  `shouldBe` ([(Load (ImmValue (fromIntegral 0)) regA)], 0, [])
+        it "Code generation for variable" $ do
+            -- Variable "i" that is an int, it is not in shared memory, it is on scope level 0, and it is in memory 0
+            (exprGen (Identifier "i") regA 0 [("i", "int", False, 0, 0)]) `shouldBe` ([(Load (DirAddr 0) regA)], 0, [("i", "int", False, 0, 0)])
+            -- Variable "b" that is a boolean, it is in shared memory, it is on scope level 0, and it is in memory 0
+            (exprGen (Identifier "b") regA 0 [("b", "bool", True, 0, 0)]) `shouldBe` ([(ReadInstr (DirAddr 0)), Receive regA], 0, [("b", "bool", True, 0, 0)])
+        -- Code generation for arithmetic operations
+        it "Code generation for addition" $ do
+            property $ \x y -> (exprGen (Addition (I x) (I y)) regA 0 []) `shouldBe` ([(Load (ImmValue (fromIntegral x)) regA), (Load (ImmValue (fromIntegral y)) regB), (Compute Add regA regB regA)], 0, [])
+        it "Code generation for subtraction" $ do
+            property $ \x y -> (exprGen (Subtraction (I x) (I y)) regA 0 []) `shouldBe` ([(Load (ImmValue (fromIntegral x)) regA), (Load (ImmValue (fromIntegral y)) regB), (Compute Sub regA regB regA)], 0, [])
+        it "Code generation for multiplication" $ do
+            property $ \x y -> (exprGen (Multiplication (I x) (I y)) regA 0 []) `shouldBe` ([(Load (ImmValue (fromIntegral x)) regA), (Load (ImmValue (fromIntegral y)) regB), (Compute Mul regA regB regA)], 0, [])
+    describe "Sprockell Code generation for Statements" $ do
+        it "Code generation for new integer variables" $ do
+            -- Create variable "i" in address 0
+            property $ \n -> (stmGen (CreateVariable "int" "i" (I n)) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral n)) regA), (Store regA (DirAddr 0))]], 1, [("i", "int", False, 0, 0)], []) 
+        it "Code generation for new boolean variables" $ do
+            (stmGen (CreateVariable "bool" "b" (B True)) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 1)) regA), (Store regA (DirAddr 0))]], 1, [("b", "bool", False, 0, 0)], [])
+            (stmGen (CreateVariable "bool" "b" (B False)) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Store regA (DirAddr 0))]], 1, [("b", "bool", False, 0, 0)], [])
+        -- Shared variables are stored in shared memory
+        it "Code generation for creation of shared integer values" $ do
+            -- Create a shared variable "i" of type integer.
+            property $ \n -> (stmGen (Shared (CreateVariable "int" "i" (I n))) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral n)) regA), (WriteInstr regA (DirAddr 8))]], 0, [("i", "int", True, 0, 8)], []) 
+        it "Code generation for creation of shared boolean values" $ do
+            -- Create a shared variable "b" of type boolean. 
+            (stmGen (Shared (CreateVariable "bool" "b" (B True))) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 1)) regA), (WriteInstr regA (DirAddr 8))]], 0, [("b", "bool", True, 0, 8)], [])
+            -- Create a shared variable "b" of type boolean when there already exists a boolean value called "a".
+            (stmGen (Shared (CreateVariable "bool" "b" (B False))) 0 [("a", "bool", True, 0, 8)] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (WriteInstr regA (DirAddr 9))]], 0, [("a", "bool", True, 0, 8), ("b", "bool", True, 0, 9)], [])
+        it "Code generation for assignment of a new value for an integer variable" $ do
+            -- Changing the value of the variable "i" that is in memory address 0, is of type integer and it is not in shared memory.
+            property $ \n -> (stmGen (Assign "i" (I n)) 0 [("i", "int", False, 0, 0)] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral n)) regA), (Store regA (DirAddr 0))]], 0, [("i", "int", False, 0, 0)], [])
+        it "Code generation for assignment of a new value for a boolean variable" $ do
+            -- Changing the value of a boolean that is saved in local memory.
+            (stmGen (Assign "b" (B True)) 0 [("b", "bool", False, 0, 0)] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 1)) regA), (Store regA (DirAddr 0))]], 0, [("b", "bool", False, 0, 0)], [])
+            -- Changing the value of a boolean that is saved in shared memory.
+            (stmGen (Assign "b" (B False)) 0 [("b", "bool", True, 0, 8)] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (WriteInstr regA (DirAddr 8))]], 0, [("b", "bool", True, 0, 8)], [])
+        it "Code generation for printing" $ do
+            (stmGen (Print (I 10)) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO)]], 0, [], [])
+        it "Code generation for a while loop" $ do
+            -- Loop is done by computein the value in comparison while it reutrns 1 the branching fails, so the jump returns it to the start.
+            -- If the value is 0 the branching jumps over all instructions in the loop and the jump so that te code continues.
+            (stmGen (While (Boolean True) [(Print (I 10))]) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 1)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel (-5)))]], 0, [], [])
+        it "Code generation for an 'if' statement" $ do
+            (stmGen (If (Boolean True) [(Print (I 10))] [] []) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 1)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 3)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
+            (stmGen (If (Boolean False) [(Print (I 10))] [] [(Print (I 5))]) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 3)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
+            (stmGen (If (Boolean False) [(Print (I 10))] [((Boolean True), [(Print (I 5))])] []) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 6)), (Load (ImmValue (fromIntegral 1)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 3)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
+            (stmGen (If (Boolean False) [(Print (I 10))] [((Boolean False), [(Print (I 5))])] [(Print (I 1))]) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 9)), (Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO), (Jump (Rel 3)), (Load (ImmValue (fromIntegral 1)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
