@@ -119,10 +119,10 @@ parseStm =  try (AssignVal <$> identifier <*> (symbol "=" *> parseExpr))
 
 {- Parse expressions. Priority on arithmetic operations is as follows: multiplication > subtraction > addition. -}
 parseExpr :: Parser Expr
-parseExpr = parseExprHelp1 `chainr1` ((\_ -> MyAdd) <$> reserved "+") 
+parseExpr = parseExprHelp1 `chainr1` ((\_ -> MySub) <$> reserved "-") 
 
 parseExprHelp1 :: Parser Expr
-parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MySub) <$> reserved "-")
+parseExprHelp1 = parseExprHelp2 `chainr1` ((\_ -> MyAdd) <$> reserved "+")
 
 parseExprHelp2 :: Parser Expr
 parseExprHelp2 = parseExprHelp3 `chainr1` ((\_ -> Mult) <$> reserved "*")
