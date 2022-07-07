@@ -6,7 +6,7 @@ import MyParser as Parser
 import Data.Typeable (typeOf, TypeRep)
 
 {- Modified EDSL, another intermediate representation to support type and scope checking -}
-data Program = Program [Statement] deriving Show
+data Program = Program [Statement] deriving (Show, Eq)
 
 data Statement = If Comparison [Statement] [(Comparison, [Statement])] [Statement]
                | While Comparison [Statement]
@@ -108,7 +108,8 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
     where 
         var = filter (\x -> getName x == name) vars
         varExists = length var > 0
-        typeCorrect = (getTypeOfExpr expr vars) == stringToType (getType (head var))
+        typeCorrect | varExists = (getTypeOfExpr expr vars) == stringToType (getType (head var))
+                    | otherwise = False
 typeCheckStatement (CreateVar t name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
                                                              | varExists   = error ("Variable '" ++ name ++  "' exists already!")
                                                              | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")

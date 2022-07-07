@@ -61,7 +61,7 @@ reserved   = Token.reserved lexer
 comSep     = commaSep lexer
 
 {- EDSL for Relatively Good Language, a program is of type Prog with a list of Stm. -}
-data Prog = Prog [Stm] deriving Show
+data Prog = Prog [Stm] deriving (Show, Eq)
 
                
 data Stm = IfStm Cmp [Stm] [(Cmp, [Stm])] [Stm] -- whatIf (cmp) { (stm)+ } (butWhatIf (cmp) { (stm)+ })* (else { stm })?
