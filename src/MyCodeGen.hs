@@ -10,9 +10,10 @@ import Data.List
 
 {- An address is in reality an integer. -}
 type Address = Int
-{- table with variables. Contains theis name, type, are they in shared memory, their scope, and their memory address. -}
+{- table with variables. Contains their name, type, are they in shared memory, their scope, and their memory address. -}
 type VarTable = [(String, String, Bool, Int, Address)]
-type LockTable = [(Address, Bool)] -- lock (True) or latch (False)
+{- Table with locks. Contains the address, id, and if the lock is a latch. -}
+type LockTable = [(Address, Int, Bool)] -- lock (True) or latch (False)
 
 {- Latches start at address 4 in shared memory -}
 latchStart = (4 :: Int)
@@ -26,7 +27,7 @@ getVarName :: (String, String, Bool, Int, Address) -> String
 getVarName (name, _, _, _, _) = name
 getIsShared :: (String, String, Bool, Int, Address) -> Bool
 getIsShared (_, _, shared, _, _) = shared
-getMemAddress :: (String, String, Bool, Int, Address) -> Int
+getMemAddress :: (String, String, Bool, Int, Address) -> Address
 getMemAddress (_, _, _, _, addr) = addr
 {- More helper getters -}
 getInstructions :: (a, Int, VarTable, LockTable) -> a
@@ -39,6 +40,10 @@ getVarTable :: ([Instruction], Int, VarTable, LockTable) -> VarTable
 getVarTable (_, _, vt, _) = vt
 getLockTable :: ([Instruction], Int, VarTable, LockTable) -> LockTable
 getLockTable (_, _, _, lt) = lt
+getLockAddress :: (Address, Int, Bool) -> Address
+getLockAddress (addr, _, _) = addr
+getLockId :: (Address, Int, Bool) -> Int
+getLockId (_, id, _) = id
 
 {- Main code generator. Start form here to generate the Sprockell instruction. -}
 progGen :: Program -> [[Instruction]]
@@ -125,25 +130,33 @@ stmGen (If cmp stms1 elseIfs stms2) addr rows locks oldInstructions = (finalInst
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 stmGen (LockStart n) addr rows locks oldInstructions = (finalInstructions, addr, rows, newLocks)
     where
-        newLocks = locks ++ [((fromIntegral n), True)]
+        locksList = filter (\(addr, id, b) -> b) locks
+        sameLocks = filter (\(addr, id, b) -> id == fromIntegral n && b) locks
+        firstFreeLock | lockExists                     = getLockAddress (head sameLocks)
+                      | (length locksList) == numLocks = error "Not enough memory for another parallel block!"
+                      | (length locksList) >= 0 = length locksList
+        lockExists = length (sameLocks) > 0
+        newLocks | lockExists = locks
+                 | otherwise  = locks ++ [(firstFreeLock, (fromIntegral n), True)]
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
         instructions = ois ++ [TestAndSet (DirAddr (fromIntegral n)), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 stmGen (LockEnd n) addr rows locks oldInstructions = (finalInstructions, addr, rows, newLocks)
     where
-        newLocks = filter (\(addr, b) -> (fromIntegral addr) /= n) locks
+        (lockAddr, _, _) = head (filter (\(addr, id, b) -> (fromIntegral n) == id) locks)
+        newLocks = filter (\(addr, id, b) -> (fromIntegral id) /= n) locks
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        instructions = ois ++ [WriteInstr reg0 (DirAddr (fromIntegral n))]
+        instructions = ois ++ [WriteInstr reg0 (DirAddr lockAddr)]
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, newAddr, newRows, finalLocks)
     where
-        (instr, newAddr, newRows, newLocks) = foldl (\(accInstr, accAddr, accRows, accLocks) x -> combineInstructions (stmGen x accAddr accRows accLocks []) accInstr) ([], addr, rows, locks) stms
-        latches = filter (\(addr, b) -> not b) newLocks
+        (instr, newAddr, newRows, newLocks) = foldl (\(accInstr, accAddr, accRows, accLocks) x -> combineInstructions (stmGen x accAddr accRows accLocks []) accInstr) ([], addr, rows, locks ++ [(lockAddr, -1, True)]) stms
+        latches = filter (\(addr, id, b) -> not b) newLocks
         firstFreeLatch | length latches == numLatches = error ("Can't create more than " ++ show numLatches ++ " parallel blocks!")
                        | length latches >= 0  = length latches
-        locksList = filter (\(addr, b) -> b) newLocks
+        locksList = filter (\(addr, id, b) -> b) newLocks
         firstFreeLock | (length locksList) == numLocks = error "Not enough memory for another parallel block!"
                       | (length locksList) >= 0 = length locksList
         ois | length oldInstructions > 0 = head oldInstructions
@@ -152,7 +165,7 @@ stmGen (Parallel stms) addr rows locks oldInstructions = (finalInstructions, new
         lockAddr = firstFreeLock
         numChildren = length stms
         -- finalLocks = newLocks ++ [(lockAddr, True),(latchAddr, False)]
-        finalLocks = newLocks ++ [(latchAddr, False)]
+        finalLocks = newLocks ++ [(latchAddr, -1, False)]
         latchCheck = [ReadInstr (DirAddr latchAddr), Receive regA, Compute NEq reg0 regA regA, Branch regA (Rel 2), Jump (Rel (-4))]
         notifyParent = (aLockGen lockAddr) ++ [ReadInstr (DirAddr latchAddr), Receive regA, Compute Incr regA regA regA, WriteInstr regA (DirAddr latchAddr)] ++ (rLockGen lockAddr)
         waitForChildren = [Load (ImmValue (numChildren+1)) regB, ReadInstr (DirAddr latchAddr), Receive regA, Compute Equal regA regB regA, Branch regA (Rel 2), Jump (Rel (-4))]
@@ -171,7 +184,7 @@ stmGen (SequentialThread stms) addr rows locks oldInstructions = (finalInstructi
 combineInstructions :: ([[Instruction]], Int, VarTable, LockTable) -> [[Instruction]] -> ([[Instruction]], Int, VarTable, LockTable)
 combineInstructions (oldInstructions, addr, rows, locks) newInstructions = (oldInstructions ++ newInstructions, addr, rows, locks)
 
-{- Helper generator fot the "else if" statements -}
+{- Helper generator for the "else if" statements -}
 elseIfGen :: [(Comparison, [Statement])] -> Int -> Int -> VarTable -> LockTable -> ([Instruction], Int, VarTable, LockTable)
 elseIfGen elseIfs elseLength addr rows locks = (instructions, newAddr, newRows, newLock)
     where
