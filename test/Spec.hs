@@ -274,3 +274,30 @@ main = hspec $ do
             (stmGen (If (Boolean False) [(Print (I 10))] [] [(Print (I 5))]) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 3)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
             (stmGen (If (Boolean False) [(Print (I 10))] [((Boolean True), [(Print (I 5))])] []) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 6)), (Load (ImmValue (fromIntegral 1)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 3)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
             (stmGen (If (Boolean False) [(Print (I 10))] [((Boolean False), [(Print (I 5))])] [(Print (I 1))]) 0 [] [] []) `shouldBe` ([[(Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 10)) regA), (WriteInstr regA numberIO), (Jump (Rel 9)), (Load (ImmValue (fromIntegral 0)) regA), (Compute Equal reg0 regA regA), (Branch regA (Rel 4)), (Load (ImmValue (fromIntegral 5)) regA), (WriteInstr regA numberIO), (Jump (Rel 3)), (Load (ImmValue (fromIntegral 1)) regA), (WriteInstr regA numberIO)]], 0, [], [])  
+        it "Code generation for locking" $ do
+            -- Creating a new Lock. If it already exists wait for it to become available.
+            property $ \n -> (stmGen (LockStart n) 0 [] [] []) `shouldBe` ([[(TestAndSet (DirAddr (fromIntegral n))), (Receive regA), (Compute NEq reg0 regA regA), (Branch regA (Rel 2)), (Jump (Rel (-4)))]], 0, [], [((fromIntegral n), True)])
+        it "Code generation for unlocking" $ do
+            -- Unlocking a lock that already exists.
+            property $ \n -> (stmGen (LockEnd n) 0 [] [((fromIntegral n), True)] []) `shouldBe` ([[(WriteInstr reg0 (DirAddr (fromIntegral n)))]], 0, [], [])
+
+{- Run to see the result of the fibonacci program written in RGL -}
+testFib :: IO ()
+testFib = do
+        file <- "./examples/fib.rgl"
+        let sprockells = progGen (typeCheckProg (parser parseProg file))
+        run sprockells
+
+{- Run to see the result of the parallel program written in RGL. It demonstrates a simple program with multithreading. -}
+testParallel :: IO ()
+testParallel = do
+        file <- "./examples/parallel.rgl"
+        let sprockells = progGen (typeCheckProg (parser parseProg file))
+        run sprockells
+
+{- Run to see the result of the banking program written in RGL. -}
+testBanking :: IO ()
+testBanking = do
+        file <- "./examples/banking.rgl"
+        let sprockells = progGen (typeCheckProg (parser parseProg file))
+        run sprockells

@@ -293,14 +293,7 @@ main = do
     let parsed = parser parseProg file
     let typeChecked = typeCheckProg parsed
     let sprockells = progGen typeChecked
-    -- let prog = [[Load (ImmValue 0) 2,WriteInstr 2 (DirAddr 8),TestAndSet (DirAddr 4),Load (ImmValue 3) 3,ReadInstr (DirAddr 4),Receive 2,Compute Equal 2 3 2,Branch 2 (Rel 2),Jump (Rel (-4)),WriteInstr 0 (DirAddr 0),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3,ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),Load (ImmValue 100) 2,ReadInstr (DirAddr 8),Receive 3,Compute Sub 2 3 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg],[ReadInstr (DirAddr 4),Receive 2,Compute NEq 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),Load (ImmValue 1) 3, ReadInstr (DirAddr 8),Receive 2,Compute Add 2 3 2,WriteInstr 2 (DirAddr 8),ReadInstr (DirAddr 8),Receive 2,WriteInstr 2 (DirAddr 65536),WriteInstr 0 (DirAddr 0),TestAndSet (DirAddr 0),Receive 2,Compute Equal 0 2 2,Branch 2 (Rel 2),Jump (Rel (-4)),ReadInstr (DirAddr 4),Receive 2,Compute Incr 2 2 2,WriteInstr 2 (DirAddr 4),WriteInstr 0 (DirAddr 0),EndProg]]
-    putStrLn ("Parsed: " ++ show parsed)
-    putStrLn ("\nType Checked: " ++ show typeChecked)
-    putStrLn ("\nSprockel: " ++ show sprockells)
-    -- let tmp = init prog
-    -- putStrLn (show tmp)
     run sprockells
-    -- runWithDebugger (debuggerSimplePrintAndWait myShow) sprockells
 
 -- test code
 runS :: String -> [[Instruction]]
