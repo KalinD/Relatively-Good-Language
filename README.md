@@ -44,7 +44,7 @@ int i = 0
 whatIf(i == 0){
     print(i)
 }
-butWhatIf(i == 2){
+butWhatIf(i == 2 && 1 == 2){
     print(5)
 }
 else {
