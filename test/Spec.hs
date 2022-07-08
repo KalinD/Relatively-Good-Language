@@ -286,6 +286,7 @@ testFib :: IO ()
 testFib = do
     file <- readFile "./examples/fib.rgl"
     let sprockells = progGen (typeCheckProg (parser parseProg file))
+    putStrLn ("Sprockell of Fibonacci: \n" ++ show sprockells)
     run sprockells
 
 {- Run to see the result of the parallel program written in RGL. It demonstrates a simple program with multithreading. -}
@@ -293,6 +294,7 @@ testParallel :: IO ()
 testParallel = do
     file <- readFile "./examples/parallel.rgl"
     let sprockells = progGen (typeCheckProg (parser parseProg file))
+    putStrLn ("Sprockell of parallel.rgl: \n" ++ show sprockells)
     run sprockells
 
 {- Run to see the result of the banking program written in RGL. -}
@@ -300,6 +302,7 @@ testBanking :: IO ()
 testBanking = do
     file <- readFile "./examples/banking.rgl"
     let sprockells = progGen (typeCheckProg (parser parseProg file))
+    putStrLn ("Sprockell of banking.rgl: \n" ++ show sprockells)
     run sprockells
 
 {- Run to see the result of the peterson algorithm program written in RGL. -}
@@ -307,6 +310,7 @@ testPeterson :: IO ()
 testPeterson = do
     file <- readFile "./examples/peterson.rgl"
     let sprockells = progGen (typeCheckProg (parser parseProg file))
+    putStrLn ("Sprockell of peterson's algorithm: \n" ++ show sprockells)
     run sprockells
 
 {- FAILING TESTS -}
