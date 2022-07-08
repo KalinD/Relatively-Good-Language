@@ -98,7 +98,7 @@ main = hspec $ do
             (parser parseStm "print(i == 10)") `shouldBe` (Prnt (BVal (MyEq (Id "i") (IVal 10))))
     describe "Parsing Programs" $ do
         {- Testing if the fibonacci program from "./examples/fib.rgl" is parsed properly.
-        - The program prints the nth fibonacci number. -}
+         - The program prints the nth fibonacci number. -}
         it "Parsing the whole fibonacci program" $ do
             fibFile <- readFile "./examples/fib.rgl"
             (parser parseProg fibFile) `shouldBe` (Prog [
@@ -299,6 +299,13 @@ testParallel = do
 testBanking :: IO ()
 testBanking = do
     file <- readFile "./examples/banking.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
+
+{- Run to see the result of the peterson algorithm program written in RGL. -}
+testPeterson :: IO ()
+testPeterson = do
+    file <- readFile "./examples/peterson.rgl"
     let sprockells = progGen (typeCheckProg (parser parseProg file))
     run sprockells
 

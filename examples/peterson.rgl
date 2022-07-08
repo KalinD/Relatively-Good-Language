@@ -12,7 +12,7 @@ allAtOnce
       %busy wait%
     }
     %critical section%
-    %...%
+    print(1)
     %end of critical section%
     flag1 = false
   }
@@ -24,7 +24,7 @@ allAtOnce
       %busy wait%
     }
     %critical section%
-    %...%
+    print(2)
     %end of critical section%
     flag2 = false
   }
