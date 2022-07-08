@@ -97,12 +97,15 @@ stmGen (Print expr) addr rows locks oldInstructions = (finalInstructions, addr, 
 stmGen (While cmp stms) addr rows locks oldInstructions = (finalInstructions, newAddr, newRows, locks)
     where
         (stmsInstructions, newAddr, newRows, _) = statementsToInstructions stms addr rows locks
-        numOfInstructions = length (head stmsInstructions)
+        numOfInstructions | length stmsInstructions > 0 = length (head stmsInstructions)
+                          | otherwise = 0
         compareInstructions = getInstructionsWithoutLock (compareGen cmp 2 addr rows)
         numOfComp = length compareInstructions
         ois | length oldInstructions > 0 = head oldInstructions
             | otherwise                  = []
-        instructions = ois ++ compareInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 2))] ++ (head stmsInstructions) ++ [(Jump (Rel (-(numOfInstructions + 2 + numOfComp))))]
+        stmInstructions | numOfInstructions = head stmsInstructions
+                        | otherwise = []
+        instructions = ois ++ compareInstructions ++ [Compute Equal reg0 2 2, Branch 2 (Rel (numOfInstructions + 2))] ++ stmInstructions ++ [(Jump (Rel (-(numOfInstructions + 2 + numOfComp))))]
         finalInstructions = [instructions] ++ (oldInstructions \\ [ois])
 stmGen (If cmp stms1 elseIfs stms2) addr rows locks oldInstructions = (finalInstructions, finalAddr, finalRows, locks)
     where
