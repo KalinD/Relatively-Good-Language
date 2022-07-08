@@ -1,0 +1,31 @@
+shared bool flag1 = false
+shared bool flag2 = false
+shared int turn = 0
+
+allAtOnce
+{
+  hangingByAThread {
+    flag1 = true
+    turn = 1
+    pleaseDoWhile(flag2 == true && turn == 1)
+    {
+      %busy wait%
+    }
+    %critical section%
+    %...%
+    %end of critical section%
+    flag1 = false
+  }
+  hangingByAThread {
+    flag2 = true
+    turn = 0
+    pleaseDoWhile(flag1 == true && turn == 0)
+    {
+      %busy wait%
+    }
+    %critical section%
+    %...%
+    %end of critical section%
+    flag2 = false
+  }
+}
