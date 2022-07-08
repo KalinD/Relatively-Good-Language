@@ -4,7 +4,7 @@
 
 ## Compiling a RGL program
 
-The following command will compile and execute the file "fib.rgl" that is in the folder "examples".
+The following command will compile and execute the file "fib.rgl" that is in the folder "examples". The Sprockell processor is assumed to have **16 shared memory** addresses (inreased from 8).
 
 ```cmd
 ..\Relatively-Good-Language> stack build
@@ -103,13 +103,10 @@ Printing puts an integer to the I/O. Any expression can be put into the print st
 
 ### Comments
 
-Two types of comments are supported - single line (%) and multiline (%- -%)
+Single line comments are supported (%).
 
 ```
 % This is a single line comment
-%-
- This is a multiline comment
- -%
 ```
 
 ## Additional notes
