@@ -2,10 +2,14 @@ shared int i = 0
 allAtOnce {
     hangingByAThread{
         doNotTouchThis(2)
+        % If this thread get the lock first the value of "i" should be 1 and it should print 99
+        % Otherwise the value of "i" will become 2 and it will print 98
         i = i + 1
         print(100 - i)
         nowYouCanTouchThis(2)
         allAtOnce {
+            % If the previous thread got the lock first the two printed values should be 3 and 2
+            % otherwise the printed values should be 4 and 3
             hangingByAThread {
                 print(i + 2)
             }
@@ -16,6 +20,8 @@ allAtOnce {
     }
     hangingByAThread{
         doNotTouchThis(2)
+        % If this thread get the lock first the value of "1" should be 1 and it should print 1
+        % Otherwise the value of "i" will become 2 and it should print 2
         i = i + 1
         print(i)
         nowYouCanTouchThis(2)

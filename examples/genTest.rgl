@@ -1,8 +1,0 @@
-int i = 0
-whatIf(i == 1){
-    print(1)
-}butWhatIf(i == 0){
-    print(0)
-}else {
-    print(10)
-}
