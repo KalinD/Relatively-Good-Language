@@ -111,8 +111,8 @@ typeCheckStatement (AssignVal name expr) level vars | varExists && typeCorrect  
         typeCorrect | varExists = (getTypeOfExpr expr vars) == stringToType (getType (head var))
                     | otherwise = False
 typeCheckStatement (CreateVar t name expr) level vars | correctType && not varExists = CreateVariable t name (typeCheckExpr expr level newVars)
-                                                             | varExists   = error ("Variable '" ++ name ++  "' exists already!")
-                                                             | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrext type. It should be " ++ t ++ "!")
+                                                      | varExists   = error ("Variable '" ++ name ++  "' exists already!")
+                                                      | otherwise   = error ("Assignment of variable '" ++ name ++ "' is of the incorrect type. It should be " ++ t ++ "!")
     where
         newVars = vars ++ [(level, t, name)]
         exprType = getTypeOfExpr expr vars

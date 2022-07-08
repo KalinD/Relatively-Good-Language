@@ -284,20 +284,43 @@ main = hspec $ do
 {- Run to see the result of the fibonacci program written in RGL -}
 testFib :: IO ()
 testFib = do
-        file <- "./examples/fib.rgl"
-        let sprockells = progGen (typeCheckProg (parser parseProg file))
-        run sprockells
+    file <- "./examples/fib.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
 
 {- Run to see the result of the parallel program written in RGL. It demonstrates a simple program with multithreading. -}
 testParallel :: IO ()
 testParallel = do
-        file <- "./examples/parallel.rgl"
-        let sprockells = progGen (typeCheckProg (parser parseProg file))
-        run sprockells
+    file <- "./examples/parallel.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
 
 {- Run to see the result of the banking program written in RGL. -}
 testBanking :: IO ()
 testBanking = do
-        file <- "./examples/banking.rgl"
-        let sprockells = progGen (typeCheckProg (parser parseProg file))
-        run sprockells
+    file <- "./examples/banking.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
+
+{- FAILING TESTS -}
+{- The following test will throw errors due to incorrect parsing. -}
+-- Declaration of an already existing variable
+testVarExists :: IO ()
+testVarExists = do
+    file <- "./failingExamples/varExists.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
+
+-- Assigning a value of a variable that doesn't exist
+testVarNotEx :: IO ()
+testVarNotEx = do
+    file <- "./failingExamples/varNotEx.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
+
+-- Assignment of a variable using an incorrect value
+testWrongType :: IO ()
+testWrongType = do
+    file <- "./failingExamples/wrongType.rgl"
+    let sprockells = progGen (typeCheckProg (parser parseProg file))
+    run sprockells
